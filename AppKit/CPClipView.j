@@ -38,8 +38,8 @@
 }
 
 /*!
-    Sets the document view to be <code>aView</code>.
-    @param aView the new document view. It's frame origin will be changed to <code>(0,0)</code> after calling this method.
+    Sets the document view to be \c aView.
+    @param aView the new document view. It's frame origin will be changed to \c (0,0) after calling this method.
 */
 - (void)setDocumentView:(CPView)aView
 {
@@ -95,7 +95,7 @@
 }
 
 /*!
-    Returns a new point that may be adjusted from <code>aPoint</code>
+    Returns a new point that may be adjusted from \c aPoint
     to make sure it lies within the document view.
     @param aPoint
     @return the adjusted point
@@ -120,15 +120,19 @@
         
     [super setBoundsOrigin:aPoint];
 
-    var superview = [self superview];
-    
-    if([superview isKindOfClass:[CPScrollView class]])
+    var superview = [self superview],
+
+        // This is hack to avoid having to import CPScrollView.
+        // FIXME: Should CPScrollView be finding out about this on its own somehow?
+        scrollViewClass = objj_getClass("CPScrollView");
+
+    if([superview isKindOfClass:scrollViewClass])
         [superview reflectScrolledClipView:self];
 }
 
 /*!
     Scrolls the clip view to the specified point. The method
-    sets its bounds origin to <code>aPoint</code>.
+    sets its bounds origin to \c aPoint.
 */
 - (void)scrollToPoint:(CGPoint)aPoint
 {
@@ -173,26 +177,52 @@
         return;
 
     // ... and we're in a scroll view of course.
-    var superview = [self superview];
-        
-    if ([superview isKindOfClass:[CPScrollView class]])
+    var superview = [self superview],
+
+        // This is hack to avoid having to import CPScrollView.
+        // FIXME: Should CPScrollView be finding out about this on its own somehow?
+        scrollViewClass = objj_getClass("CPScrollView");
+
+    if ([superview isKindOfClass:scrollViewClass])
         [superview reflectScrolledClipView:self];
 }
 
 - (BOOL)autoscroll:(CPEvent)anEvent 
 {
     var bounds = [self bounds],
-        eventLocation = [self convertPoint:[anEvent locationInWindow] fromView:nil];
+        eventLocation = [self convertPoint:[anEvent locationInWindow] fromView:nil],
+        superview = [self superview],
+        deltaX = 0,
+        deltaY = 0;
 
-    if (CPRectContainsPoint(bounds, eventLocation))
+    if (CGRectContainsPoint(bounds, eventLocation))
         return NO;
 
-    var newRect = CGRectMakeZero();
+    if (![superview isKindOfClass:[CPScrollView class]] || [superview hasVerticalScroller])
+    {
+        if (eventLocation.y < CGRectGetMinY(bounds))
+            deltaY = CGRectGetMinY(bounds) - eventLocation.y;
+        else if (eventLocation.y > CGRectGetMaxY(bounds))
+            deltaY = CGRectGetMaxY(bounds) - eventLocation.y;
+        if (deltaY < -bounds.size.height)
+            deltaY = -bounds.size.height;
+        if (deltaY > bounds.size.height)
+            deltaY = bounds.size.height;
+    }
 
-    newRect.origin = eventLocation;
-    newRect.size = CPSizeMake(10, 10);
+    if (![superview isKindOfClass:[CPScrollView class]] || [superview hasHorizontalScroller])
+    {
+        if (eventLocation.x < CGRectGetMinX(bounds))
+            deltaX = CGRectGetMinX(bounds) - eventLocation.x;
+        else if (eventLocation.x > CGRectGetMaxX(bounds))
+            deltaX = CGRectGetMaxX(bounds) - eventLocation.x;
+        if (deltaX < -bounds.size.width)
+            deltaX = -bounds.size.width;
+        if (deltaX > bounds.size.width)
+            deltaX = bounds.size.width;
+    }
 
-	return [_documentView scrollRectToVisible:newRect];
+	return [self scrollToPoint:CGPointMake(bounds.origin.x - deltaX, bounds.origin.y - deltaY)];
 }
 
 @end

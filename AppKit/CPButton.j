@@ -24,31 +24,10 @@
 @import "CGGeometry.j"
 
 @import "CPControl.j"
+@import "CPStringDrawing.j"
 
 #include "CoreGraphics/CGGeometry.h"
 
-
-CPScaleProportionally   = 0;
-CPScaleToFit            = 1;
-CPScaleNone             = 2;
-
-
-/* @group CPCellImagePosition */
-
-CPNoImage       = 0;
-CPImageOnly     = 1;
-CPImageLeft     = 2;
-CPImageRight    = 3;
-CPImageBelow    = 4;
-CPImageAbove    = 5;
-CPImageOverlaps = 6;
-
-
-/*  @group CPButtonState */
-
-CPOnState                       = 1;
-CPOffState                      = 0;
-CPMixedState                    = -1;
 
 /* @group CPBezelStyle */
 
@@ -145,7 +124,7 @@ CPButtonStateMixed  = CPThemeState("mixed");
 
 + (id)themeAttributes
 {
-    return [CPDictionary dictionaryWithObjects:[_CGInsetMakeZero(), _CGInsetMakeZero(), nil]
+    return [CPDictionary dictionaryWithObjects:[_CGInsetMakeZero(), _CGInsetMakeZero(), [CPNull null]]
                                        forKeys:[@"bezel-inset", @"content-inset", @"bezel-color"]];
 }
 
@@ -172,7 +151,7 @@ CPButtonStateMixed  = CPThemeState("mixed");
 
 // Setting the state
 /*!
-    Returns <code>YES</code> if the button has a 'mixed' state in addition to on and off.
+    Returns \c YES if the button has a 'mixed' state in addition to on and off.
 */
 - (BOOL)allowsMixedState
 {
@@ -192,8 +171,8 @@ CPButtonStateMixed  = CPThemeState("mixed");
 
     _allowsMixedState = aFlag;
 
-    if (!_allowsMixedState)
-        [self unsetThemeState:CPButtonStateMixed];
+    if (!_allowsMixedState && [self state] === CPMixedState)
+        [self setState:CPOnState];
 }
 
 - (void)setObjectValue:(id)anObjectValue
@@ -248,9 +227,9 @@ CPButtonStateMixed  = CPThemeState("mixed");
 }
 
 /*!
-    Sets the button's state to <code>aState</code>.
+    Sets the button's state to \c aState.
     @param aState Possible states are any of the CPButton globals:
-    <code>CPOffState, CPOnState, CPMixedState</code>
+    \c CPOffState, \c CPOnState, \c CPMixedState
 */
 - (void)setState:(CPInteger)aState
 {
@@ -460,7 +439,7 @@ CPButtonStateMixed  = CPThemeState("mixed");
     return bounds;
 }
 
-- (CGRect)bezelRectForBounds:(CFRect)bounds
+- (CGRect)bezelRectForBounds:(CGRect)bounds
 {
     if (![self isBordered])
         return _CGRectMakeZero();
@@ -523,8 +502,6 @@ CPButtonStateMixed  = CPThemeState("mixed");
     }
     else
         return [[_CPImageAndTextView alloc] initWithFrame:_CGRectMakeZero()];
-
-    return [super createEphemeralSubviewNamed:aName];
 }
 
 - (void)layoutSubviews
@@ -532,9 +509,8 @@ CPButtonStateMixed  = CPThemeState("mixed");
     var bezelView = [self layoutEphemeralSubviewNamed:@"bezel-view"
                                            positioned:CPWindowBelow
                       relativeToEphemeralSubviewNamed:@"content-view"];
-      
-    if (bezelView)
-        [bezelView setBackgroundColor:[self currentValueForThemeAttribute:@"bezel-color"]];
+
+    [bezelView setBackgroundColor:[self currentValueForThemeAttribute:@"bezel-color"]];
 
     var contentView = [self layoutEphemeralSubviewNamed:@"content-view"
                                              positioned:CPWindowAbove
@@ -602,7 +578,7 @@ var CPButtonImageKey                = @"CPButtonImageKey",
 @implementation CPButton (CPCoding)
 
 /*!
-    Initializes the button by unarchiving data from <code>aCoder</code>.
+    Initializes the button by unarchiving data from \c aCoder.
     @param aCoder the coder containing the archived CPButton.
 */
 - (id)initWithCoder:(CPCoder)aCoder

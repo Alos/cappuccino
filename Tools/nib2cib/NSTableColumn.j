@@ -22,31 +22,35 @@
 
 
 @import <AppKit/CPTableColumn.j>
+@import <AppKit/CPTableHeaderView.j>
 
 @implementation CPTableColumn (NSCoding)
 
 - (id)NS_initWithCoder:(CPCoder)aCoder
 {
     self = [self init];
-    
+
     if (self)
     {
         _identifier = [aCoder decodeObjectForKey:@"NSIdentifier"];
-        
-        var template = [[CPTableColumn alloc] ]
-        
+
         //var dataViewCell = [aCoder decodeObjectForKey:@"NSDataCell"];
-        
+
         _dataView = [[CPTextField alloc] initWithFrame:CPRectMakeZero()];
-        [_dataView setValue:[CPColor whiteColor] forThemedAttributeName:"text-color" inControlState:CPThemeStateHighlighted];
-        
-        //_headerView = [aCoder decodeObjectForKey:@"NSHeaderCell"];
-        _headerView = [[CPTextField alloc] initWithFrame:CPRectMakeZero()];
-        
+        [_dataView setValue:[CPColor whiteColor] forThemeAttribute:@"text-color" inState:CPThemeStateSelected];
+
+        var headerCell = [aCoder decodeObjectForKey:@"NSHeaderCell"],
+            headerView = [[_CPTableColumnHeaderView alloc] initWithFrame:CPRectMakeZero()];
+
+        [_headerView setStringValue:[headerCell objectValue]];
+        [_headerView setFont:[headerCell font]];
+
+        [self setHeaderView:_headerView];
+
         _width = [aCoder decodeFloatForKey:@"NSWidth"];
         _minWidth = [aCoder decodeFloatForKey:@"NSMinWidth"];
         _maxWidth = [aCoder decodeFloatForKey:@"NSMaxWidth"];
-        
+
         _resizingMask  = [aCoder decodeBoolForKey:@"NSIsResizable"];
     }
     
@@ -69,3 +73,11 @@
     return [CPTableColumn class];
 }
 
+@end
+
+
+@implementation NSTableHeaderCell : NSActionCell
+{
+}
+
+@end

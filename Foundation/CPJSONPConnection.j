@@ -56,7 +56,7 @@ CPJSONPCallbackReplacementString = @"${JSONP_CALLBACK}";
 
 + (CPJSONPConnection)connectionWithRequest:(CPURLRequest)aRequest callback:(CPString)callbackParameter delegate:(id)aDelegate
 {
-    return [[[self class] alloc] initWithRequest:aRequest callback:callbackParameter delegate:aDelegate startImmediately:YES];;
+    return [[[self class] alloc] initWithRequest:aRequest callback:callbackParameter delegate:aDelegate startImmediately:YES];
 }
 
 - (id)initWithRequest:(CPURLRequest)aRequest callback:(CPString)aString delegate:(id)aDelegate 
@@ -73,7 +73,7 @@ CPJSONPCallbackReplacementString = @"${JSONP_CALLBACK}";
     
     _callbackParameter = aString;
     
-    if (!_callbackParameter && [_request URL].indexOf(CPJSONPCallbackReplacementString) < 0)
+    if (!_callbackParameter && [[_request URL] absoluteString].indexOf(CPJSONPCallbackReplacementString) < 0)
          [CPException raise:CPInvalidArgumentException reason:@"JSONP source specified without callback parameter or CPJSONPCallbackReplacementString in URL."];
 
     if(shouldStartImmediately)
@@ -88,14 +88,19 @@ CPJSONPCallbackReplacementString = @"${JSONP_CALLBACK}";
     {
         CPJSONPConnectionCallbacks["callback"+[self UID]] = function(data)
         {
-            [_delegate connection:self didReceiveData:data];
+            if ([_delegate respondsToSelector:@selector(connection:didReceiveData:)])
+                [_delegate connection:self didReceiveData:data];
+
+            if ([_delegate respondsToSelector:@selector(connectionDidFinishLoading:)])
+                    [_delegate connectionDidFinishLoading:self];
+    
             [self removeScriptTag];
     
             [[CPRunLoop currentRunLoop] limitDateForMode:CPDefaultRunLoopMode];
         };
 
         var head = document.getElementsByTagName("head").item(0),
-            source = [_request URL];    
+            source = [[_request URL] absoluteString];
 
         if (_callbackParameter)
         {
@@ -118,7 +123,9 @@ CPJSONPCallbackReplacementString = @"${JSONP_CALLBACK}";
     }
     catch (exception)
     {
-        [_delegate connection: self didFailWithError: exception];
+        if ([_delegate respondsToSelector:@selector(connection:didFailWithError:)])
+            [_delegate connection: self didFailWithError: exception];
+
         [self removeScriptTag];
     }
 }

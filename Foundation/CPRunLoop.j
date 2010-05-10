@@ -157,6 +157,7 @@ var CPRunLoopLastNativeRunLoop = 0;
     CPDate  _effectiveDate;
 
     CPArray _orderedPerforms;
+    int     _runLoopInsuranceTimer;
 }
 
 /*
@@ -267,6 +268,14 @@ var CPRunLoopLastNativeRunLoop = 0;
         aTimer._lastNativeRunLoopsForModes = {};
         
     aTimer._lastNativeRunLoopsForModes[aMode] = CPRunLoopLastNativeRunLoop;
+
+#if PLATFORM(DOM)
+    if (!_runLoopInsuranceTimer)
+        _runLoopInsuranceTimer = window.setNativeTimeout(function()
+        {
+            [self limitDateForMode:CPDefaultRunLoopMode];
+        }, 0);
+#endif
 }
 
 /*!
@@ -277,9 +286,17 @@ var CPRunLoopLastNativeRunLoop = 0;
     //simple locking to try to prevent concurrent iterating over timers
     if (_runLoopLock)
         return;
-        
+
     _runLoopLock = YES;
-    
+
+#if PLATFORM(DOM)
+    if (_runLoopInsuranceTimer)
+    {
+        window.clearNativeTimeout(_runLoopInsuranceTimer);
+        _runLoopInsuranceTimer = nil;
+    }
+#endif
+
     var now = _effectiveDate ? [_effectiveDate laterDate:[CPDate date]] : [CPDate date],
         nextFireDate = nil,
         nextTimerFireDate = _nextTimerFireDatesForModes[aMode];

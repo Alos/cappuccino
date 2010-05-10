@@ -25,6 +25,8 @@
 @import <Foundation/CPDictionary.j>
 @import <Foundation/CPPropertyListSerialization.j>
 
+#include "Platform/Platform.h"
+
 
 CPGeneralPboard         = @"CPGeneralPboard";
 CPFontPboard            = @"CPFontPboard";
@@ -41,11 +43,14 @@ CPURLPboardType         = @"CPURLPboardType";
 CPImagesPboardType      = @"CPImagesPboardType";
 CPVideosPboardType      = @"CPVideosPboardType";
 
+UTF8PboardType          = @"public.utf8-plain-text";
+
 // Deprecated
 CPImagePboardType       = @"CPImagePboardType";
 
 
-var CPPasteboards = nil;
+var CPPasteboards = nil,
+    supportsNativePasteboard = NO;
 
 /*! 
     @ingroup appkit
@@ -61,6 +66,8 @@ var CPPasteboards = nil;
     
     unsigned        _changeCount;
     CPString        _stateUID;
+
+    WebScriptObject _nativePasteboard;
 }
 
 /*
@@ -74,6 +81,9 @@ var CPPasteboards = nil;
     [self setVersion:1.0];
     
     CPPasteboards = [CPDictionary dictionary];
+
+    if (typeof window.cpPasteboardWithName !== "undefined")
+        supportsNativePasteboard = YES;
 }
 
 /*!
@@ -92,7 +102,7 @@ var CPPasteboards = nil;
 + (id)pasteboardWithName:(CPString)aName
 {
     var pasteboard = [CPPasteboards objectForKey:aName];
-    
+
     if (pasteboard)
         return pasteboard;
     
@@ -116,6 +126,12 @@ var CPPasteboards = nil;
         _provided = [CPDictionary dictionary];
         
         _changeCount = 0;
+
+        if (supportsNativePasteboard)
+        {
+            _nativePasteboard = window.cpPasteboardWithName(aName);
+            [self _synchronizePasteboard];
+        }
     }
     
     return self;
@@ -144,7 +160,16 @@ var CPPasteboards = nil;
         
         [_owners setObject:anOwner forKey:type];
     }
-    
+
+    if (_nativePasteboard)
+    {
+        var nativeTypes = [types copy];
+        if ([types containsObject:CPStringPboardType])
+            nativeTypes.push(UTF8PboardType);
+
+        _nativePasteboard.addTypes_(nativeTypes);
+    }
+
     return ++_changeCount;
 }
 
@@ -156,6 +181,12 @@ var CPPasteboards = nil;
 */
 - (unsigned)declareTypes:(CPArray)types owner:(id)anOwner
 {
+    [self _declareTypes:types owner:anOwner updateNativePasteboard:YES];
+}
+
+/*! @ignore */
+- (unsigned)_declareTypes:(CPArray)types owner:(id)anOwner updateNativePasteboard:(BOOL)shouldUpdate
+{
     [_types setArray:types];
 
     _owners = [CPDictionary dictionary];
@@ -165,7 +196,16 @@ var CPPasteboards = nil;
     
     while (count--)
         [_owners setObject:anOwner forKey:_types[count]];
-        
+
+    if (_nativePasteboard && shouldUpdate)
+    {
+        var nativeTypes = [types copy];
+        if ([types containsObject:CPStringPboardType])
+            nativeTypes.push(UTF8PboardType);
+
+        _nativePasteboard.declareTypes_(nativeTypes);
+        _changeCount = _nativePasteboard.changeCount();
+    }
     return ++_changeCount;
 }
 
@@ -173,12 +213,15 @@ var CPPasteboards = nil;
     Sets the pasteboard data for the specified type
     @param aData the data
     @param aType the data type being set
-    @return <code>YES</code> if the data was successfully written to the pasteboard
+    @return \c YES if the data was successfully written to the pasteboard
 */
 - (BOOL)setData:(CPData)aData forType:(CPString)aType
 {
     [_provided setObject:aData forKey:aType];
-    
+
+    if (aType === CPStringPboardType)
+        [self setData:aData forType:UTF8PboardType];
+
     return YES;
 }
 
@@ -186,22 +229,22 @@ var CPPasteboards = nil;
     Writes the specified property list as data for the specified type
     @param aPropertyList the property list to write
     @param aType the data type
-    @return <code>YES</code> if the property list was successfully written to the pasteboard
+    @return \c YES if the property list was successfully written to the pasteboard
 */
 - (BOOL)setPropertyList:(id)aPropertyList forType:(CPString)aType
 {
-    return [self setData:[CPPropertyListSerialization dataFromPropertyList:aPropertyList format:CPPropertyListXMLFormat_v1_0 errorDescription:nil] forType:aType];
+    return [self setData:[CPPropertyListSerialization dataFromPropertyList:aPropertyList format:CPPropertyList280NorthFormat_v1_0] forType:aType];
 }
 
 /*!
     Sets the specified string as data for the specified type
     @param aString the string to write
     @param aType the data type
-    @return <code>YES</code> if the string was successfully written to the pasteboard
+    @return \c YES if the string was successfully written to the pasteboard
 */
 - (void)setString:(CPString)aString forType:(CPString)aType
 {
-    return [self setPropertyList:aString forType:aType];
+    [self setPropertyList:aString forType:aType];
 }
 
 // Determining Types
@@ -209,11 +252,11 @@ var CPPasteboards = nil;
     Checks the pasteboard's types for a match with the types listen in the specified array. The array should
     be ordered by the requestor's most preferred data type first.
     @param anArray an array of requested types ordered by preference
-    @return the highest match with the pasteboard's supported types or <code>nil</code> if no match was found
+    @return the highest match with the pasteboard's supported types or \c nil if no match was found
 */
 - (CPString)availableTypeFromArray:(CPArray)anArray
 {
-    return [_types firstObjectCommonWithArray:anArray];
+    return [[self types] firstObjectCommonWithArray:anArray];
 }
 
 /*!
@@ -221,6 +264,7 @@ var CPPasteboards = nil;
 */
 - (CPArray)types
 {
+    [self _synchronizePasteboard];
     return _types;
 }
 
@@ -236,7 +280,7 @@ var CPPasteboards = nil;
 /*!
     Returns the pasteboard data for the specified data type
     @param aType the requested data type
-    @return the requested data or <code>nil</code> if the data doesn't exist
+    @return the requested data or \c nil if the data doesn't exist
 */
 - (CPData)dataForType:(CPString)aType
 {
@@ -249,27 +293,57 @@ var CPPasteboards = nil;
     
     if (owner)
     {
-        [owner pasteboard:self provideDataForType:aType];
-        
-        ++_changeCount;
-        
+        [owner pasteboard:self provideDataForType:aType];        
         return [_provided objectForKey:aType];
     }
     
+    if (aType === CPStringPboardType)
+        return [self dataForType:UTF8PboardType];
+
     return nil;
+}
+
+- (void)_synchronizePasteboard
+{
+    if (_nativePasteboard && _nativePasteboard.changeCount() > _changeCount)
+    {
+        var nativeTypes = [_nativePasteboard.types() copy];
+        if ([nativeTypes containsObject:UTF8PboardType])
+            nativeTypes.push(CPStringPboardType);
+
+        [self _declareTypes:nativeTypes owner:self updateNativePasteboard:NO];
+
+        _changeCount = _nativePasteboard.changeCount();
+    }
+}
+
+/*! @ignore
+    method provided for integration with native pasteboard
+*/
+- (void)pasteboard:(CPPasteboard)aPasteboard provideDataForType:(CPString)aType
+{
+    if (aType === CPStringPboardType)
+    {
+        var string = _nativePasteboard.stringForType_(UTF8PboardType);
+
+        [self setString:string forType:CPStringPboardType];
+        [self setString:string forType:UTF8PboardType];
+    }
+    else
+        [self setString:_nativePasteboard.stringForType_(aType) forType:aType];
 }
 
 /*!
     Returns the property list for the specified data type
     @param aType the requested data type
-    @return the property list or <code>nil</code> if the list was not found
+    @return the property list or \c nil if the list was not found
 */
 - (id)propertyListForType:(CPString)aType
 {
     var data = [self dataForType:aType];
     
     if (data)
-        return [CPPropertyListSerialization propertyListFromData:data format:CPPropertyListXMLFormat_v1_0 errorDescription:nil];
+        return [CPPropertyListSerialization propertyListFromData:data format:CPPropertyList280NorthFormat_v1_0];
         
     return nil;
 }
@@ -277,7 +351,7 @@ var CPPasteboards = nil;
 /*!
     Returns the string for the specified data type
     @param aType the requested data type
-    @return the string or <code>nil</code> if the string was not found
+    @return the string or \c nil if the string was not found
 */
 - (CPString)stringForType:(CPString)aType
 {
@@ -304,3 +378,70 @@ var CPPasteboards = nil;
 }
 
 @end
+
+#if PLATFORM(DOM)
+
+var DOMDataTransferPasteboard = nil;
+
+@implementation _CPDOMDataTransferPasteboard : CPPasteboard
+{
+    DataTransfer    _dataTransfer;
+}
+
++ (_CPDOMDataTransferPasteboard)DOMDataTransferPasteboard
+{
+    if (!DOMDataTransferPasteboard)
+        DOMDataTransferPasteboard = [[_CPDOMDataTransferPasteboard alloc] init];
+
+    return DOMDataTransferPasteboard;
+}
+
+- (void)_setDataTransfer:(DataTransfer)aDataTransfer
+{
+    _dataTransfer = aDataTransfer;
+}
+
+- (void)_setPasteboard:(CPPasteboard)aPasteboard
+{
+    _dataTransfer.clearData();
+
+    var types = [aPasteboard types],
+        count = types.length;
+
+    while (count--)
+    {
+        var type = types[count];
+
+        if (type === CPStringPboardType)
+            _dataTransfer.setData(type, [aPasteboard stringForType:type]);
+        else
+            _dataTransfer.setData(type, [[aPasteboard dataForType:type] rawString]);
+    }
+}
+
+- (CPArray)types
+{
+    return Array.prototype.slice.apply(_dataTransfer.types);
+}
+
+- (CPData)dataForType:(CPString)aType
+{
+    var dataString = _dataTransfer.getData(aType);
+
+    if (aType === CPStringPboardType)
+        return [CPData dataFromPropertyList:dataString format:kCFPropertyList280NorthFormat_v1_0];
+
+    return [CPData dataWithRawString:dataString];
+}
+
+- (id)propertyListForType:(CPString)aType
+{
+    if (aType === CPStringPboardType)
+        return _dataTransfer.getData(aType);
+
+    return [CPPropertyListSerialization propertyListFromData:[self dataForType:aType] format:CPPropertyListUnknownFormat];
+}
+
+@end
+
+#endif

@@ -30,12 +30,14 @@
 @import "_CPCibCustomView.j"
 @import "_CPCibKeyedUnarchiver.j"
 @import "_CPCibObjectData.j"
+@import "_CPCibProxyObject.j"
 @import "_CPCibWindowTemplate.j"
 
 
 CPCibOwner              = @"CPCibOwner",
 CPCibTopLevelObjects    = @"CPCibTopLevelObjects",
-CPCibReplacementClasses = @"CPCibReplacementClasses";
+CPCibReplacementClasses = @"CPCibReplacementClasses",
+CPCibExternalObjects    = @"CPCibExternalObjects";
     
 var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
@@ -58,7 +60,7 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
     if (self)
     {
-        _data = [CPURLConnection sendSynchronousRequest:[CPURLRequest requestWithURL:aURL] returningResponse:nil error:nil];
+        _data = [CPURLConnection sendSynchronousRequest:[CPURLRequest requestWithURL:aURL] returningResponse:nil];
         _awakenCustomResources = YES;
     }
 
@@ -81,11 +83,25 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
     return self;
 }
 
-- (id)initWithCibNamed:(CPString)aName bundle:(CPBundle)aBundle loadDelegate:(id)aLoadDelegate
+- (id)initWithCibNamed:(CPString)aName bundle:(CPBundle)aBundle
 {
     if (![aName hasSuffix:@".cib"])
         aName = [aName stringByAppendingString:@".cib"];
     
+    // If aBundle is nil, use mainBundle, but ONLY for searching for the nib, not for resources later.
+    self = [self initWithContentsOfURL:[aBundle || [CPBundle mainBundle] pathForResource:aName]];
+
+    if (self)
+        _bundle = aBundle;
+
+    return self;
+}
+
+- (id)initWithCibNamed:(CPString)aName bundle:(CPBundle)aBundle loadDelegate:(id)aLoadDelegate
+{
+    if (![aName hasSuffix:@".cib"])
+        aName = [aName stringByAppendingString:@".cib"];
+
     // If aBundle is nil, use mainBundle, but ONLY for searching for the nib, not for resources later.
     self = [self initWithContentsOfURL:[aBundle || [CPBundle mainBundle] pathForResource:aName] loadDelegate:aLoadDelegate];
 
@@ -125,6 +141,8 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
             [unarchiver setClass:[replacementClasses objectForKey:key] forClassName:key];
     }
 
+    [unarchiver setExternalObjectsForProxyIdentifiers:[anExternalNameTable objectForKey:CPCibExternalObjects]];
+
     var objectData = [unarchiver decodeObjectForKey:CPCibObjectDataKey];
 
     if (!objectData || ![objectData isKindOfClass:[_CPCibObjectData class]])
@@ -135,14 +153,6 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
     [objectData instantiateWithOwner:owner topLevelObjects:topLevelObjects]
     [objectData establishConnectionsWithOwner:owner topLevelObjects:topLevelObjects];
     [objectData awakeWithOwner:owner topLevelObjects:topLevelObjects];
-
-    var menu;
-
-    if ((menu = [objectData mainMenu]) != nil)
-    {
-         [CPApp setMainMenu:menu];
-         [CPMenu setMenuBarVisible:YES];
-    }
 
     // Display Visible Windows.
     [objectData displayVisibleWindows];
@@ -161,12 +171,17 @@ var CPCibObjectDataKey  = @"CPCibObjectDataKey";
 
 - (void)connection:(CPURLConnection)aConnection didReceiveData:(CPString)data
 {
-    _data = [CPData dataWithString:data];
+    // FIXME: Why aren't we getting connection:didFailWithError:
+    if (!data)
+        return [self connection:aConnection didFailWithError:nil];
+
+    _data = [CPData dataWithRawString:data];
 }
 
 - (void)connection:(CPURLConnection)aConnection didFailWithError:(CPError)anError
 {
-    alert("cib: connection failed.");
+    if ([_loadDelegate respondsToSelector:@selector(cibDidFailToLoad:)])
+        [_loadDelegate cibDidFailToLoad:self];
 
     _loadDelegate = nil;
 }

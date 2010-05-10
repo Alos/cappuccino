@@ -54,7 +54,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 /*!
     Initializes the pop-up button to the specified size.
     @param aFrame the size for the button
-    @param shouldPullDown <code>YES</code> makes this a pull-down menu, <code>NO</code> makes it a pop-up menu.
+    @param shouldPullDown \c YES makes this a pull-down menu, \c NO makes it a pop-up menu.
     @return the initialized pop-up button
 */
 - (id)initWithFrame:(CGRect)aFrame pullsDown:(BOOL)shouldPullDown
@@ -87,8 +87,8 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 
 /*!
     Specifies whether the object is a pull-down or a pop-up menu.
-    @param shouldPullDown <code>YES</code> makes the pop-up button
-    a pull-down menu. <code>NO</code> makes it a pop-up menu.
+    @param shouldPullDown \c YES makes the pop-up button
+    a pull-down menu. \c NO makes it a pop-up menu.
 */
 - (void)setPullsDown:(BOOL)shouldPullDown
 {
@@ -111,7 +111,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 }
 
 /*!
-    Returns <code>YES</code> if the button is a pull-down menu. <code>NO</code> if the button is a pop-up menu.
+    Returns \c YES if the button is a pull-down menu. \c NO if the button is a pop-up menu.
 */
 - (BOOL)pullsDown
 {
@@ -200,7 +200,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 
 // Getting the User's Selection
 /*!
-    Returns the selected item or <code>nil</code> if no item is selected.
+    Returns the selected item or \c nil if no item is selected.
 */
 - (CPMenuItem)selectedItem
 {
@@ -211,7 +211,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 }
 
 /*!
-    Returns the title of the selected item or <code>nil</code> if no item is selected.
+    Returns the title of the selected item or \c nil if no item is selected.
 */
 - (CPString)titleOfSelectedItem
 {
@@ -372,7 +372,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 }
 
 /*!
-    Returns the item at the specified index or <code>nil</code> if the item does not exist.
+    Returns the item at the specified index or \c nil if the item does not exist.
     @param anIndex the index of the item to obtain
 */
 - (CPMenuItem)itemAtIndex:(unsigned)anIndex
@@ -381,7 +381,7 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 }
 
 /*!
-    Returns the title of the item at the specified index or <code>nil</code> if no item exists.
+    Returns the title of the item at the specified index or \c nil if no item exists.
     @param anIndex the index of the item
 */
 - (CPString)itemTitleAtIndex:(unsigned)anIndex
@@ -638,21 +638,49 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
 {
     if (![self isEnabled] || ![self numberOfItems])
         return;
-        
+
     [self highlight:YES];
 
     var menu = [self menu],
-        theWindow = [self window],
-        menuWindow = [_CPMenuWindow menuWindowWithMenu:menu font:[self font]];
-    
-    [menuWindow setDelegate:self];
-    [menuWindow setBackgroundStyle:_CPMenuWindowPopUpBackgroundStyle];
-    
-    // Pull Down Menus show up directly below their buttons.
+        bounds = [self bounds],
+        minimumWidth = CGRectGetWidth(bounds);
+
+    // FIXME: setFont: should set the font on the menu.
+    [menu setFont:[self font]];
+
     if ([self pullsDown])
-        var menuOrigin = [theWindow convertBaseToBridge:[self convertPoint:CGPointMake(0.0, CGRectGetMaxY([self bounds])) toView:nil]];
-    
-    // Pop Up Menus attempt to show up "on top" of the selected item.
+    {
+        var positionedItem = nil,
+            location = CGPointMake(0.0, CGRectGetMaxY(bounds));
+    }
+    else
+    {
+        var contentRect = [self contentRectForBounds:bounds],
+            positionedItem = [self selectedItem],
+            standardLeftMargin = [_CPMenuWindow _standardLeftMargin] + [_CPMenuItemStandardView _standardLeftMargin],
+            location = CGPointMake(CGRectGetMinX(contentRect) - standardLeftMargin, 0.0);
+
+        minimumWidth += standardLeftMargin;
+    }
+
+    [menu setMinimumWidth:minimumWidth];
+
+    [menu
+        _popUpMenuPositioningItem:positionedItem
+                       atLocation:location
+                             topY:CGRectGetMinY(bounds)
+                          bottomY:CGRectGetMaxY(bounds)
+                           inView:self
+                         callback:function(aMenu)
+        {
+            [self highlight:NO];
+
+            var highlightedItem = [aMenu highlightedItem];
+
+            if ([highlightedItem _isSelectable])
+                [self selectItem:highlightedItem];
+        }];
+/*
     else
     {
         // This is confusing, I KNOW, so let me explain it to you.
@@ -660,48 +688,36 @@ CPPopUpButtonStatePullsDown = CPThemeState("pulls-down");
         // 1. So calculate where our content is, then calculate where the menu item is.
         // 2. Move LEFT by whatever indentation we have (offsetWidths, aka, window margin, item margin, etc).
         // 3. MOVE UP by the difference in sizes of the content and menu item, this will only work if the content is vertically centered.
-        var contentRect = [self convertRect:[self contentRectForBounds:[self bounds]] toView:nil],
-            menuOrigin = [theWindow convertBaseToBridge:contentRect.origin],
+        var contentRect = [self convertRect:[self contentRectForBounds:bounds] toView:nil],
+            menuOrigin = [theWindow convertBaseToGlobal:contentRect.origin],
             menuItemRect = [menuWindow rectForItemAtIndex:_selectedIndex];
-        
+
         menuOrigin.x -= CGRectGetMinX(menuItemRect) + [menuWindow overlapOffsetWidth] + [[[menu itemAtIndex:_selectedIndex] _menuItemView] overlapOffsetWidth];
         menuOrigin.y -= CGRectGetMinY(menuItemRect) + (CGRectGetHeight(menuItemRect) - CGRectGetHeight(contentRect)) / 2.0;
     }
-    
-    [menuWindow setFrameOrigin:menuOrigin];
-    
-    var menuMaxX = CGRectGetMaxX([menuWindow frame]),
-        buttonMaxX = [theWindow convertBaseToBridge:CGPointMake(CGRectGetMaxX([self convertRect:[self bounds] toView:nil]), 0.0)].x;
-        
-    if (menuMaxX < buttonMaxX)
-        [menuWindow setMinWidth:CGRectGetWidth([menuWindow frame]) + buttonMaxX - menuMaxX - ([self pullsDown] ? 0.0 : VISIBLE_MARGIN)];
-    
-    [menuWindow orderFront:self];
-    [menuWindow beginTrackingWithEvent:anEvent sessionDelegate:self didEndSelector:@selector(menuWindowDidFinishTracking:highlightedItem:)];
-}
-
-/*
-    @ignore
 */
-- (void)menuWindowDidFinishTracking:(_CPMenuWindow)aMenuWindow highlightedItem:(CPMenuItem)aMenuItem
-{
-    [_CPMenuWindow poolMenuWindow:aMenuWindow];
-
-    [self highlight:NO];
-    
-    var index = [_menu indexOfItem:aMenuItem];
-    
-    if (index == CPNotFound)
-        return;
-    
-    [self selectItemAtIndex:index];
-    
-    [CPApp sendAction:[aMenuItem action] to:[aMenuItem target] from:aMenuItem];
 }
 
 - (void)_popUpItemAction:(id)aSender
 {
     [self sendAction:[self action] to:[self target]];
+}
+
+- (void)takeValueFromKeyPath:(CPString)aKeyPath ofObjects:(CPArray)objects
+{
+    var count = objects.length,
+        value = [objects[0] valueForKeyPath:aKeyPath];
+
+    [self selectItemWithTag:value];
+    [self setEnabled:YES];
+
+    while (count-- > 1)
+    {
+        if (value !== [objects[count] valueForKeyPath:aKeyPath])
+        {
+            [[self selectedItem] setState:CPOffState];
+        }
+    }
 }
 
 @end

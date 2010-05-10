@@ -46,6 +46,13 @@ CPCancelButton  = 0;
     <li>A panel can be made to work even when there's an attention panel on-screen. This permits actions within the panel to affect the attention panel.</li>
 </ul>
 */
+
+/*
+    @global
+    @class CPWindow
+*/
+CPDocModalWindowMask			= 1 << 6;
+
 @implementation CPPanel : CPWindow
 {
     BOOL    _becomesKeyOnlyIfNeeded;
@@ -53,7 +60,7 @@ CPCancelButton  = 0;
 }
 
 /*!
-    Returns <code>YES</code> if the receiver is a floating panel (like a palette).
+    Returns \c YES if the receiver is a floating panel (like a palette).
 */
 - (BOOL)isFloatingPanel
 {
@@ -61,8 +68,8 @@ CPCancelButton  = 0;
 }
 
 /*!
-    Sets the receiver to be a floating panel. <code>YES</code>
-    makes the window a floating panel. <code>NO</code> makes it a normal window.
+    Sets the receiver to be a floating panel. \c YES
+    makes the window a floating panel. \c NO makes it a normal window.
     @param isFloatingPanel specifies whether to make it floating
 */
 - (void)setFloatingPanel:(BOOL)isFloatingPanel
@@ -71,8 +78,8 @@ CPCancelButton  = 0;
 }
 
 /*!
-    Returns <code>YES</code> if the window only becomes key
-    if needed. <code>NO</code> means it behaves just like other windows.
+    Returns \c YES if the window only becomes key
+    if needed. \c NO means it behaves just like other windows.
 */
 - (BOOL)becomesKeyOnlyIfNeeded
 {
@@ -81,7 +88,7 @@ CPCancelButton  = 0;
 
 /*!
     Sets whether the the window becomes key only if needed.
-    @param shouldBecomeKeyOnlyIfNeeded <code>YES</code> makes the window become key only if needed
+    @param shouldBecomeKeyOnlyIfNeeded \c YES makes the window become key only if needed
 */
 - (void)setBecomesKeyOnlyIfNeeded:(BOOL)shouldBecomeKeyOnlyIfNeeded
 {

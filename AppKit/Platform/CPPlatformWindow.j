@@ -1,3 +1,24 @@
+/*
+ * CPPlatformWindow.j
+ * AppKit
+ *
+ * Created by Francisco Tolmasky.
+ * Copyright 2010, 280 North, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 2.1 of the License, or (at your option) any later version.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+ */
 
 @import <Foundation/CPObject.j>
 
@@ -9,24 +30,34 @@ var PrimaryPlatformWindow   = NULL;
 
 @implementation CPPlatformWindow : CPObject
 {
-    CGRect  _contentRect;
+    CGRect          _contentRect;
+
+    CPInteger       _level;
+    BOOL            _hasShadow;
+    unsigned        _shadowStyle;
 
 #if PLATFORM(DOM)
     DOMWindow       _DOMWindow;
 
     DOMElement      _DOMBodyElement;
     DOMElement      _DOMFocusElement;
+    DOMElement      _DOMEventGuard;
 
     CPArray         _windowLevels;
     CPDictionary    _windowLayers;
 
     BOOL            _mouseIsDown;
+    BOOL            _mouseDownIsRightClick;
     CPWindow        _mouseDownWindow;
     CPTimeInterval  _lastMouseUp;
     CPTimeInterval  _lastMouseDown;
 
     Object          _charCodes;
     unsigned        _keyCode;
+    unsigned        _lastKey;
+    BOOL            _capsLockActive;
+    BOOL            _ignoreNativeCopyOrCutEvent;
+    BOOL            _ignoreNativePastePreparation;
 
     BOOL            _DOMEventMode;
 
@@ -36,6 +67,11 @@ var PrimaryPlatformWindow   = NULL;
 
     CPString        _overriddenEventType;
 #endif
+}
+
++ (CPSet)visiblePlatformWindows
+{
+    return [CPSet set];
 }
 
 + (CPPlatformWindow)primaryPlatformWindow
@@ -86,13 +122,13 @@ var PrimaryPlatformWindow   = NULL;
     return contentBounds;
 }
 
-- (void)usableContentFrame
+- (CGRect)visibleFrame
 {
     var frame = [self contentBounds];
 
     frame.origin = CGPointMakeZero();
 
-    if ([CPMenu menuBarVisible])
+    if ([CPMenu menuBarVisible] && [CPPlatformWindow primaryPlatformWindow] === self)
     {
         var menuBarHeight = [[CPApp mainMenu] menuBarHeight];
 
@@ -103,71 +139,112 @@ var PrimaryPlatformWindow   = NULL;
     return frame;
 }
 
+- (CGRect)usableContentFrame
+{
+    return [self visibleFrame];
+}
+
 - (void)setContentRect:(CGRect)aRect
 {
     if (!aRect || _CGRectEqualToRect(_contentRect, aRect))
         return;
 
-    [self setContentOrigin:aRect.origin];
-    [self setContentSize:aRect.size];
-}
+    _contentRect = _CGRectMakeCopy(aRect);
 
-- (void)setContentOrigin:(CGPoint)aPoint
-{
-    var origin = _contentRect.origin;
-
-    if (!aPoint || _CGPointEqualToPoint(origin, aPoint))
-        return;
-
-    origin.x = aPoint.x;
-    origin.y = aPoint.y;
-
-    [self updateNativeContentOrigin];
-}
-
-- (void)setContentSize:(CGSize)aSize
-{
-    var size = _contentRect.size;
-
-    if (!aSize || _CGSizeEqualToSize(size, aSize))
-        return;
-
-    var delta = _CGSizeMake(aSize.width - size.width, aSize.height - size.height);
-
-    size.width = aSize.width;
-    size.height = aSize.height;
-
-    [self updateNativeContentSize];
+    [self updateNativeContentRect];
 }
 
 - (void)updateFromNativeContentRect
 {
     [self setContentRect:[self nativeContentRect]];
 }
-/*
-- (BOOL)isVisible
+
+- (CGPoint)convertBaseToScreen:(CGPoint)aPoint
 {
-    return NO;
+    var contentRect = [self contentRect];
+
+    return _CGPointMake(aPoint.x + _CGRectGetMinX(contentRect), aPoint.y + _CGRectGetMinY(contentRect));
 }
 
-/*
-+ (BOOL)supportsMultipleWindows
+- (CGPoint)convertScreenToBase:(CGPoint)aPoint
 {
-#if PLATFORM(BROWSER)
-    return YES;
+    var contentRect = [self contentRect];
+
+    return _CGPointMake(aPoint.x - _CGRectGetMinX(contentRect), aPoint.y - _CGRectGetMinY(contentRect));
+}
+
+- (BOOL)isVisible
+{
+#if PLATFORM(DOM)
+    return _DOMWindow !== NULL;
 #else
     return NO;
 #endif
 }
-*/
+
+- (void)deminiaturize:(id)sender
+{
+#if PLATFORM(DOM)
+    if (_DOMWindow && typeof _DOMWindow["cpDeminiaturize"] === "function")
+        _DOMWindow.cpDeminiaturize();
+#endif
+}
+
+- (void)miniaturize:(id)sender
+{
+#if PLATFORM(DOM)
+    if (_DOMWindow && typeof _DOMWindow["cpMiniaturize"] === "function")
+        _DOMWindow.cpMiniaturize();
+#endif
+}
+
+- (void)moveWindow:(CPWindow)aWindow fromLevel:(int)fromLevel toLevel:(int)toLevel
+{
+#if PLATFORM(DOM)
+    if (!aWindow._isVisible)
+        return;
+
+    var fromLayer = [self layerAtLevel:fromLevel create:NO],
+        toLayer = [self layerAtLevel:toLevel create:YES];
+
+    [fromLayer removeWindow:aWindow];
+    [toLayer insertWindow:aWindow atIndex:CPNotFound];
+#endif
+}
+
+- (void)setLevel:(CPInteger)aLevel
+{
+    _level = aLevel;
+
+#if PLATFORM(DOM)
+    if (_DOMWindow && _DOMWindow.cpSetLevel)
+        _DOMWindow.cpSetLevel(aLevel);
+#endif
+}
+
+- (void)setHasShadow:(BOOL)shouldHaveShadow
+{
+    _hasShadow = shouldHaveShadow;
+
+#if PLATFORM(DOM)
+    if (_DOMWindow && _DOMWindow.cpSetHasShadow)
+        _DOMWindow.cpSetHasShadow(shouldHaveShadow);
+#endif
+}
+
+- (void)setShadowStyle:(int)aStyle
+{
+    _shadowStyle = aStyle;
+
+#if PLATFORM(DOM)
+    if (_DOMWindow && _DOMWindow.cpSetShadowStyle)
+        _shadowStyle.cpSetShadowStyle(aStyle);
+#endif
+}
 
 - (BOOL)supportsFullPlatformWindows
 {
-#if PLATFORM(BROWSER)
-    return YES;
-#else
-    return NO;
-#endif
+    return [CPPlatform isBrowser];
 }
 
 @end

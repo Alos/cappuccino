@@ -24,6 +24,8 @@
 @import <Foundation/CPArray.j>
 
 @import "CPResponder.j"
+@import "CPSavePanel.j"
+@import "CPViewController.j"
 @import "CPWindowController.j"
 
 
@@ -91,20 +93,24 @@ var CPDocumentUntitledCount = 0;
 */
 @implementation CPDocument : CPResponder
 {
-    CPWindow        _window; // For outlet purposes.
+    CPWindow            _window; // For outlet purposes.
+    CPView              _view; // For outlet purposes
+    CPDictionary        _viewControllersForWindowControllers;
 
-    CPURL           _fileURL;
-    CPString        _fileType;
-    CPArray         _windowControllers;
-    unsigned        _untitledDocumentIndex;
+    CPURL               _fileURL;
+    CPString            _fileType;
+    CPArray             _windowControllers;
+    unsigned            _untitledDocumentIndex;
 
-    BOOL            _hasUndoManager;
-    CPUndoManager   _undoManager;
-    
-    int             _changeCount;
-    
-    CPURLConnection _readConnection;
-    CPURLRequest    _writeRequest;
+    BOOL                _hasUndoManager;
+    CPUndoManager       _undoManager;
+
+    int                 _changeCount;
+
+    CPURLConnection     _readConnection;
+    CPURLRequest        _writeRequest;
+
+    CPAlert             _canCloseAlert;
 }
 
 /*!
@@ -118,10 +124,11 @@ var CPDocumentUntitledCount = 0;
     if (self)
     {
         _windowControllers = [];
-        
+        _viewControllersForWindowControllers = [CPDictionary dictionary];
+
         _hasUndoManager = YES;
         _changeCount = 0;
-        
+
         [self setNextResponder:CPApp];
     }
     
@@ -161,10 +168,10 @@ var CPDocumentUntitledCount = 0;
     
     if (self)
     {
-        [self readFromURL:anAbsoluteURL ofType:aType delegate:aDelegate didReadSelector:aDidReadSelector contextInfo:aContextInfo];
-        
         [self setFileURL:anAbsoluteURL];
         [self setFileType:aType];
+
+        [self readFromURL:anAbsoluteURL ofType:aType delegate:aDelegate didReadSelector:aDidReadSelector contextInfo:aContextInfo];
     }
     
     return self;
@@ -176,8 +183,8 @@ var CPDocumentUntitledCount = 0;
     @param absoluteContentsURL the location of the document's contents
     @param aType the type of the contents
     @param aDelegate this object will receive a callback after the document's contents are loaded
-    @param aDidReadSelector the message selector that will be sent to <code>aDelegate</code>
-    @param aContextInfo passed as the argument to the message sent to the <code>aDelegate</code>
+    @param aDidReadSelector the message selector that will be sent to \c aDelegate
+    @param aContextInfo passed as the argument to the message sent to the \c aDelegate
     @return the initialized document
 */
 - (id)initForURL:(CPURL)anAbsoluteURL withContentsOfURL:(CPURL)absoluteContentsURL ofType:(CPString)aType delegate:(id)aDelegate didReadSelector:(SEL)aDidReadSelector contextInfo:(id)aContextInfo
@@ -186,10 +193,10 @@ var CPDocumentUntitledCount = 0;
     
     if (self)
     {
-        [self readFromURL:absoluteContentsURL ofType:aType delegate:aDelegate didReadSelector:aDidReadSelector contextInfo:aContextInfo];
-        
         [self setFileURL:anAbsoluteURL];
         [self setFileType:aType];
+
+        [self readFromURL:absoluteContentsURL ofType:aType delegate:aDelegate didReadSelector:aDidReadSelector contextInfo:aContextInfo];
     }
     
     return self;
@@ -224,16 +231,73 @@ var CPDocumentUntitledCount = 0;
                 reason:"readFromData:ofType: must be overridden by the document subclass."];
 }
 
+- (void)viewControllerWillLoadCib:(CPViewController)aViewController
+{
+}
+
+- (void)viewControllerDidLoadCib:(CPViewController)aViewController
+{
+}
+
+- (CPWindowController)firstEligibleExistingWindowController
+{
+    return nil;
+}
+
 // Creating and managing window controllers
 /*!
     Creates the window controller for this document.
 */
 - (void)makeWindowControllers
 {
-    var windowCibName = [self windowCibName];
+    [self makeViewAndWindowControllers];
+}
 
-    if (windowCibName)
-        [self addWindowController:[[CPWindowController alloc] initWithWindowCibName:windowCibName owner:self]];
+- (void)makeViewAndWindowControllers
+{
+    var viewCibName = [self viewCibName],
+        viewController = nil,
+        windowController = nil;
+
+    // Create our view controller if we have a cib for it.
+    if ([viewCibName length])
+        viewController = [[CPViewController alloc] initWithCibName:viewCibName bundle:nil owner:self];
+
+    // If we have a view controller, check if we have a free window for it.
+    if (viewController)
+        windowController = [self firstEligibleExistingWindowController];
+
+    // If not, create one.
+    if (!windowController)
+    {
+        var windowCibName = [self windowCibName];
+
+        // From a cib if we have one.
+        if ([windowCibName length])
+            windowController = [[CPWindowController alloc] initWithWindowCibName:windowCibName owner:self];
+
+        // If not you get a standard window capable of displaying multiple documents and view
+        else if (viewController)
+        {
+            var view = [viewController view],
+                viewFrame = [view frame];
+            
+            viewFrame.origin = CGPointMake(50, 50);
+
+            var theWindow = [[CPWindow alloc] initWithContentRect:viewFrame styleMask:CPTitledWindowMask | CPClosableWindowMask | CPMiniaturizableWindowMask | CPResizableWindowMask];
+
+            windowController = [[CPWindowController alloc] initWithWindow:theWindow];
+        }
+    }
+
+    if (windowController && viewController)
+        [windowController setSupportsMultipleDocuments:YES];
+
+    if (windowController)
+        [self addWindowController:windowController];
+
+    if (viewController)
+        [self addViewController:viewController forWindowController:windowController];
 }
 
 /*!
@@ -252,12 +316,52 @@ var CPDocumentUntitledCount = 0;
 - (void)addWindowController:(CPWindowController)aWindowController
 {
     [_windowControllers addObject:aWindowController];
-    
+
     if ([aWindowController document] !== self)
-    {
-        [aWindowController setNextResponder:self];
         [aWindowController setDocument:self];
-    }
+}
+
+/*!
+    Remove a controller to the document's list of controllers. This should
+    be called after closing the controller's window.
+    @param aWindowController the controller to remove
+*/
+- (void)removeWindowController:(CPWindowController)aWindowController
+{
+    if (aWindowController)
+        [_windowControllers removeObject:aWindowController];
+
+    if ([aWindowController document] === self)
+        [aWindowController setDocument:nil];
+}
+
+- (CPView)view
+{
+    return _view;
+}
+
+- (CPArray)viewControllers
+{
+    return [_viewControllersForWindowControllers allValues];
+}
+
+- (void)addViewController:(CPViewController)aViewController forWindowController:(CPWindowController)aWindowController
+{
+    // FIXME: exception if we don't own the window controller?
+    [_viewControllersForWindowControllers setObject:aViewController forKey:[aWindowController UID]];
+
+    if ([aWindowController document] === self)
+        [aWindowController setViewController:aViewController];
+}
+
+- (void)removeViewController:(CPViewController)aViewController
+{
+    [_viewControllersForWindowControllers removeObject:aViewController];
+}
+
+- (CPViewController)viewControllerForWindowController:(CPWindowController)aWindowController
+{
+    return [_viewControllersForWindowControllers objectForKey:[aWindowController UID]];
 }
 
 // Managing Document Windows
@@ -266,6 +370,7 @@ var CPDocumentUntitledCount = 0;
 */
 - (void)showWindows
 {
+    [_windowControllers makeObjectsPerformSelector:@selector(setDocument:) withObject:self];
     [_windowControllers makeObjectsPerformSelector:@selector(showWindow:) withObject:self];
 }
 
@@ -286,6 +391,11 @@ var CPDocumentUntitledCount = 0;
 	return @"Untitled " + _untitledDocumentIndex;
 }
 
+- (CPString)viewCibName
+{
+    return nil;
+}
+
 /*!
     Returns the document's Cib name
 */
@@ -295,7 +405,7 @@ var CPDocumentUntitledCount = 0;
 }
 
 /*!
-    Called after <code>aWindowController<code> loads the document's Nib file.
+    Called after \c aWindowController loads the document's Nib file.
     @param aWindowController the controller that loaded the Nib file
 */
 - (void)windowControllerDidLoadCib:(CPWindowController)aWindowController
@@ -303,7 +413,7 @@ var CPDocumentUntitledCount = 0;
 }
 
 /*!
-    Called before <code>aWindowController</code> will load the document's Nib file.
+    Called before \c aWindowController will load the document's Nib file.
     @param aWindowController the controller that will load the Nib file
 */
 - (void)windowControllerWillLoadCib:(CPWindowController)aWindowController
@@ -325,7 +435,7 @@ var CPDocumentUntitledCount = 0;
 
     // FIXME: Oh man is this every looking for trouble, we need to handle login at the Cappuccino level, with HTTP Errors.
     _readConnection = [CPURLConnection connectionWithRequest:[CPURLRequest requestWithURL:anAbsoluteURL] delegate:self];
-    
+
     _readConnection.session = _CPReadSessionMake(aType, aDelegate, aDidReadSelector, aContextInfo);
 }
 
@@ -343,7 +453,7 @@ var CPDocumentUntitledCount = 0;
 */
 - (void)setFileURL:(CPURL)aFileURL
 {
-    if (_fileURL == aFileURL)
+    if (_fileURL === aFileURL)
         return;
 
     _fileURL = aFileURL;
@@ -368,17 +478,22 @@ var CPDocumentUntitledCount = 0;
 
     _writeRequest = [CPURLRequest requestWithURL:anAbsoluteURL];
 
-    [_writeRequest setHTTPMethod:@"POST"];
-    [_writeRequest setHTTPBody:[data string]];
-    
+    // FIXME: THIS IS WRONG! We need a way to decide
+    if ([CPPlatform isBrowser])
+        [_writeRequest setHTTPMethod:@"POST"];
+    else
+        [_writeRequest setHTTPMethod:@"PUT"];
+
+    [_writeRequest setHTTPBody:[data rawString]];
+
     [_writeRequest setValue:@"close" forHTTPHeaderField:@"Connection"];
 
-    if (aSaveOperation == CPSaveOperation)
+    if (aSaveOperation === CPSaveOperation)
         [_writeRequest setValue:@"true" forHTTPHeaderField:@"x-cappuccino-overwrite"];
-    
-    if (aSaveOperation != CPSaveToOperation)
+
+    if (aSaveOperation !== CPSaveToOperation)
         [self updateChangeCount:CPChangeCleared];
-    
+
     // FIXME: Oh man is this every looking for trouble, we need to handle login at the Cappuccino level, with HTTP Errors.
     var connection = [CPURLConnection connectionWithRequest:_writeRequest delegate:self];
 
@@ -435,6 +550,7 @@ var CPDocumentUntitledCount = 0;
                 _writeRequest = nil;
     
                 objj_msgSend(session.delegate, session.didSaveSelector, self, NO, session.contextInfo);
+                [self _sendDocumentSavedNotification:NO];
             }
         }
     }
@@ -451,7 +567,7 @@ var CPDocumentUntitledCount = 0;
     // READ
     if (aConnection == _readConnection)
     {
-        [self readFromData:[CPData dataWithString:aData] ofType:session.fileType error:nil];
+        [self readFromData:[CPData dataWithRawString:aData] ofType:session.fileType error:nil];
 
         objj_msgSend(session.delegate, session.didReadSelector, self, YES, session.contextInfo);
     }
@@ -463,6 +579,7 @@ var CPDocumentUntitledCount = 0;
         _writeRequest = nil;
         
         objj_msgSend(session.delegate, session.didSaveSelector, self, YES, session.contextInfo);
+        [self _sendDocumentSavedNotification:YES];
     }
 }
 
@@ -490,6 +607,7 @@ var CPDocumentUntitledCount = 0;
         alert("There was an error saving the document.");
 
         objj_msgSend(session.delegate, session.didSaveSelector, self, NO, session.contextInfo);
+        [self _sendDocumentSavedNotification:NO];
     }
 }
 
@@ -505,7 +623,7 @@ var CPDocumentUntitledCount = 0;
 
 // Managing Document Status
 /*!
-    Returns <code>YES</code> if there are any unsaved changes.
+    Returns \c YES if there are any unsaved changes.
 */
 - (BOOL)isDocumentEdited
 {
@@ -551,7 +669,7 @@ var CPDocumentUntitledCount = 0;
 
 // Working with Undo Manager
 /*!
-    Returns <code>YES</code> if the document has a
+    Returns \c YES if the document has a
     CPUndoManager.
 */
 - (BOOL)hasUndoManager
@@ -561,7 +679,7 @@ var CPDocumentUntitledCount = 0;
 
 /*!
     Sets whether the document should have a CPUndoManager.
-    @param aFlag <code>YES</code> makes the document have an undo manager
+    @param aFlag \c YES makes the document have an undo manager
 */
 - (void)setHasUndoManager:(BOOL)aFlag
 {
@@ -645,7 +763,7 @@ var CPDocumentUntitledCount = 0;
 
 /*!
     Returns the document's undo manager. If the document
-    should have one, but the manager is <code>nil</code>, it
+    should have one, but the manager is \c nil, it
     will be created and then returned.
     @return the document's undo manager
 */
@@ -669,11 +787,16 @@ var CPDocumentUntitledCount = 0;
 // Handling User Actions
 /*!
     Saves the document. If the document does not
-    have a file path to save to (<code>fileURL</code>)
-    then <code>saveDocumentAs:</code> will be called.
+    have a file path to save to (\c fileURL)
+    then \c -saveDocumentAs: will be called.
     @param aSender the object requesting the save
 */
 - (void)saveDocument:(id)aSender
+{
+    [self saveDocumentWithDelegate:nil didSaveSelector:nil contextInfo:nil];
+}
+
+- (void)saveDocumentWithDelegate:(id)delegate didSaveSelector:(SEL)didSaveSelector contextInfo:(Object)contextInfo
 {
     if (_fileURL)
     {
@@ -681,10 +804,10 @@ var CPDocumentUntitledCount = 0;
             postNotificationName:CPDocumentWillSaveNotification
                           object:self];
         
-        [self saveToURL:_fileURL ofType:[self fileType] forSaveOperation:CPSaveOperation delegate:self didSaveSelector:@selector(document:didSave:contextInfo:) contextInfo:NULL];
+        [self saveToURL:_fileURL ofType:[self fileType] forSaveOperation:CPSaveOperation delegate:delegate didSaveSelector:didSaveSelector contextInfo:contextInfo];
     }
     else
-        [self saveDocumentAs:self];
+        [self _saveDocumentAsWithDelegate:delegate didSaveSelector:didSaveSelector contextInfo:contextInfo];
 }
 
 /*!
@@ -693,22 +816,30 @@ var CPDocumentUntitledCount = 0;
 */
 - (void)saveDocumentAs:(id)aSender
 {
-    _documentName = window.prompt("Document Name:");
+    [self _saveDocumentAsWithDelegate:nil didSaveSelector:nil contextInfo:nil];
+}
 
-    if (!_documentName)
+- (void)_saveDocumentAsWithDelegate:(id)delegate didSaveSelector:(SEL)didSaveSelector contextInfo:(Object)contextInfo
+{
+    var savePanel = [CPSavePanel savePanel],
+        response = [savePanel runModal];
+
+    if (!response)
         return;
-        
+
+    var saveURL = [savePanel URL];
+
     [[CPNotificationCenter defaultCenter]
         postNotificationName:CPDocumentWillSaveNotification
                       object:self];
-    
-    [self saveToURL:[self proposedFileURL] ofType:[self fileType] forSaveOperation:CPSaveAsOperation delegate:self didSaveSelector:@selector(document:didSave:contextInfo:) contextInfo:NULL];
+
+    [self saveToURL:saveURL ofType:[self fileType] forSaveOperation:CPSaveAsOperation delegate:delegate didSaveSelector:didSaveSelector contextInfo:contextInfo];
 }
 
 /*
     @ignore
 */
-- (void)document:(id)aDocument didSave:(BOOL)didSave contextInfo:(id)aContextInfo
+- (void)_sendDocumentSavedNotification:(BOOL)didSave
 {
     if (didSave)
         [[CPNotificationCenter defaultCenter]
@@ -718,6 +849,71 @@ var CPDocumentUntitledCount = 0;
         [[CPNotificationCenter defaultCenter]
             postNotificationName:CPDocumentDidFailToSaveNotification
                           object:self];
+}
+
+@end
+
+@implementation CPDocument (ClosingDocuments)
+
+- (void)close
+{
+    [_windowControllers makeObjectsPerformSelector:@selector(removeDocumentAndCloseIfNecessary:) withObject:self];
+    [[CPDocumentController sharedDocumentController] removeDocument:self];
+}
+
+- (void)shouldCloseWindowController:(CPWindowController)controller delegate:(id)delegate shouldCloseSelector:(SEL)selector contextInfo:(Object)info 
+{
+    if ([controller shouldCloseDocument] || ([_windowControllers count] < 2 && [_windowControllers indexOfObject:controller] !== CPNotFound))
+        [self canCloseDocumentWithDelegate:self shouldCloseSelector:@selector(_document:shouldClose:context:) contextInfo:{delegate:delegate, selector:selector, context:info}];
+
+    else if ([delegate respondsToSelector:selector])
+        objj_msgSend(delegate, selector, self, YES, info);
+}
+
+- (void)_document:(CPDocument)aDocument shouldClose:(BOOL)shouldClose context:(Object)context
+{
+    if (aDocument === self && shouldClose)
+        [self close];
+
+    objj_msgSend(context.delegate, context.selector, aDocument, shouldClose, context.context);
+}
+
+- (void)canCloseDocumentWithDelegate:(id)aDelegate shouldCloseSelector:(SEL)aSelector contextInfo:(Object)context 
+{
+    if (![self isDocumentEdited])
+        return [aDelegate respondsToSelector:aSelector] && objj_msgSend(aDelegate, aSelector, self, YES, context);
+
+    _canCloseAlert = [[CPAlert alloc] init];
+
+    [_canCloseAlert setDelegate:self];
+    [_canCloseAlert setAlertStyle:CPWarningAlertStyle];
+    [_canCloseAlert setTitle:@"Unsaved Document"];
+    [_canCloseAlert setMessageText:@"Do you want to save the changes you've made to the document \"" + ([self displayName] || [self fileName]) + "\"?"];
+
+    [_canCloseAlert addButtonWithTitle:@"Save"];
+    [_canCloseAlert addButtonWithTitle:@"Cancel"];
+    [_canCloseAlert addButtonWithTitle:@"Don't Save"];
+
+    _canCloseAlert._context = {delegate:aDelegate, selector:aSelector, context:context};
+
+    [_canCloseAlert runModal];
+}
+
+- (void)alertDidEnd:(CPAlert)alert returnCode:(int)returnCode
+{
+    if (alert !== _canCloseAlert)
+        return;
+
+    var delegate = alert._context.delegate,
+        selector = alert._context.selector,
+        context = alert._context.context;
+
+    if (returnCode === 0)
+        [self saveDocumentWithDelegate:delegate didSaveSelector:selector contextInfo:context];
+    else
+        objj_msgSend(delegate, selector, self, returnCode === 2, context);
+
+    _canCloseAlert = nil;
 }
 
 @end

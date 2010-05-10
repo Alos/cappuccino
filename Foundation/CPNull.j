@@ -25,13 +25,13 @@
 
 var CPNullSharedNull = nil;
 
-/*! 
+/*!
     @class CPNull
     @ingroup foundation
-    @brief An object representation of <code>nil</code>.
+    @brief An object representation of \c nil.
 
-    This class is used as an object representation of <code>nil</code>. This is handy when a collection
-    only accepts objects as values, but you would like a <code>nil</code> representation in there.
+    This class is used as an object representation of \c nil. This is handy when a collection
+    only accepts objects as values, but you would like a \c nil representation in there.
 */
 @implementation CPNull : CPObject
 {
@@ -41,20 +41,39 @@ var CPNullSharedNull = nil;
 {
     if (CPNullSharedNull)
         return CPNullSharedNull;
-        
+
     return [super alloc];
 }*/
 /*!
     Returns the singleton instance of the CPNull
-    object. While CPNull and <code>nil</code> should
+    object. While CPNull and \c nil should
     be <i>interpreted</i> as the same, they are not equal ('==').
 */
 + (CPNull)null
 {
     if (!CPNullSharedNull)
         CPNullSharedNull = [[CPNull alloc] init];
-        
+
     return CPNullSharedNull;
+}
+
+/*!
+    Returns CPNull null.
+    @param aCoder the coder from which to do nothing
+    @return [CPNull null]
+*/
+- (id)initWithCoder:(CPCoder)aCoder
+{
+    return [CPNull null];
+}
+
+/*!
+    Writes out nothing to the specified coder.
+    @param aCoder the coder to which nothing will
+    be written
+*/
+- (void)encodeWithCoder:(CPCoder)aCoder
+{
 }
 
 @end

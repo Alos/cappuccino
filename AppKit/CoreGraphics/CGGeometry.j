@@ -70,18 +70,20 @@ _function(CGInsetMakeZero())
 _function(CGInsetMakeCopy(anInset))
 _function(CGInsetIsEmpty(anInset))
 
+CGRectNull = _CGRectMake(Infinity, Infinity, 0.0, 0.0);
+
 /*!
     @addtogroup appkit
     @{
 */
 
 /*!
-    Returns a <code>BOOL</code> indicating whether CGRect <code>lhsRect</code>
-    contains CGRect <code>rhsRect</code>.
+    Returns a \c BOOL indicating whether CGRect \c lhsRect
+    contains CGRect \c rhsRect.
     @group CGRect
-    @param lhsRect the CGRect to test if <code>rhsRect</code> is inside of
-    @param rhsRect the CGRect to test if it fits inside <code>lhsRect</code>.
-    @return BOOL <code>YES</code> if <code>rhsRect</code> fits inside <code>lhsRect</code>.
+    @param lhsRect the CGRect to test if \c rhsRect is inside of
+    @param rhsRect the CGRect to test if it fits inside \c lhsRect.
+    @return BOOL \c YES if \c rhsRect fits inside \c lhsRect.
 */
 function CGRectContainsRect(lhsRect, rhsRect)
 {
@@ -91,11 +93,11 @@ function CGRectContainsRect(lhsRect, rhsRect)
 }
 
 /*!
-    Returns <code>YES</code> if the two rectangles intersect
+    Returns \c YES if the two rectangles intersect
     @group CGRect
     @param lhsRect the first CGRect
     @param rhsRect the second CGRect
-    @return BOOL <code>YES</code> if the two rectangles have any common spaces, and <code>NO</code>, otherwise.
+    @return BOOL \c YES if the two rectangles have any common spaces, and \c NO, otherwise.
 */
 function CGRectIntersectsRect(lhsRect, rhsRect)
 {
@@ -155,31 +157,34 @@ function CGRectStandardize(aRect)
 {
     var width = _CGRectGetWidth(aRect),
         height = _CGRectGetHeight(aRect),
-        standardized = aRect;
+        standardized = _CGRectMakeCopy(aRect);
 
     if (width < 0.0)
     {
-        if (standardized == aRect)
-            standardized = _CGRectMakeCopy(aRect);
-    
         standardized.origin.x += width;
         standardized.size.width = -width;
     }
-    
+
     if (height < 0.0)
     {
-        if (standardized == aRect)
-            standardized = _CGRectMakeCopy(aRect);
-
         standardized.origin.y += height;
         standardized.size.height = -height;
     }
-    
+
     return standardized;
 }
 
 function CGRectUnion(lhsRect, rhsRect)
 {
+    var lhsRectIsNull = !lhsRect || lhsRect === CGRectNull,
+        rhsRectIsNull = !rhsRect || rhsRect === CGRectNull;
+
+    if (lhsRectIsNull)
+        return rhsRectIsNull ? CGRectNull : rhsRect;
+
+    if (rhsRectIsNull)
+        return lhsRectIsNull ? CGRectNull : lhsRect;
+
     var minX = MIN(_CGRectGetMinX(lhsRect), _CGRectGetMinX(rhsRect)),
         minY = MIN(_CGRectGetMinY(lhsRect), _CGRectGetMinY(rhsRect)),
         maxX = MAX(_CGRectGetMaxX(lhsRect), _CGRectGetMaxX(rhsRect)),

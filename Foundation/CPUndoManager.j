@@ -22,6 +22,7 @@
 
 @import "CPObject.j"
 @import "CPInvocation.j"
+@import "CPProxy.j"
 
 
 var CPUndoManagerNormal     = 0,
@@ -163,22 +164,24 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
     execution of undo or redo actions, and tuning behavior parameters such as
     the size of the undo stack. Each application entity with its own editing
     history (e.g., a document) should have its own undo manager instance.
-    Obtain an instance through a simple <code>[[CPUndoManager alloc] init]
-    </code> message.
+    Obtain an instance through a simple \c [[CPUndoManager \c alloc] \c init]
+     message.
 */
 @implementation CPUndoManager : CPObject
 {
     CPMutableArray  _redoStack;
     CPMutableArray  _undoStack;
-    
+
     BOOL            _groupsByEvent;
     int             _disableCount;
     int             _levelsOfUndo;
     id              _currentGrouping;
     int             _state;
     CPString        _actionName;
+
     id              _preparedTarget;
-    
+    id              _undoManagerProxy;
+
     CPArray         _runLoopModes;
     BOOL            _registeredWithRunLoop;
 }
@@ -200,15 +203,32 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
         
         [self setRunLoopModes:[CPDefaultRunLoopMode]];
         [self setGroupsByEvent:YES];
-        _performRegistered = NO;
+
+        _undoManagerProxy = [_CPUndoManagerProxy alloc];
+        _undoManagerProxy._undoManager = self;
     }
     
     return self;
 }
 
+- (void)_addUndoInvocation:(CPInvocation)anInvocation
+{
+    if (!_currentGrouping)
+        // Remember that we create these lazily...
+        if ([self groupsByEvent])
+            [self _beginUndoGroupingForEvent];
+        else
+            [CPException raise:CPInternalInconsistencyException reason:"No undo group is currently open"];
+
+    [_currentGrouping addInvocation:anInvocation];
+
+    if (_state === CPUndoManagerNormal)
+        [_redoStack removeAllObjects];
+}
+
 // Registering Undo Operations
 /*!
-    Registers an undo operation. You invoke this method with the target of the undo action providing the selector which can perform the undo with the provided object. The object is often a dictionary of the identifying the attribute and their values before the change. The invocation will be added to the current grouping. If the registrations have been disabled through <code>-disableUndoRegistration</code>, this method does nothing.
+    Registers an undo operation. You invoke this method with the target of the undo action providing the selector which can perform the undo with the provided object. The object is often a dictionary of the identifying the attribute and their values before the change. The invocation will be added to the current grouping. If the registrations have been disabled through \c -disableUndoRegistration, this method does nothing.
     @param aTarget the target for the undo invocation
     @param aSelector the selector for the action message
     @param anObject the argument for the action message
@@ -216,9 +236,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 */
 - (void)registerUndoWithTarget:(id)aTarget selector:(SEL)aSelector object:(id)anObject
 {
-    if (!_currentGrouping)
-        [CPException raise:CPInternalInconsistencyException reason:"No undo group is currently open"];
-
+    // Don't do anything if we're disabled.
     if (_disableCount > 0)
         return;
 
@@ -230,10 +248,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
     [invocation setSelector:aSelector];
     [invocation setArgument:anObject atIndex:2];
 
-    [_currentGrouping addInvocation:invocation];
-
-    if (_state == CPUndoManagerNormal)
-        [_redoStack removeAllObjects];
+    [self _addUndoInvocation:invocation];
 }
 /*!
     Prepares the specified target for the undo action.
@@ -244,14 +259,14 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 {
     _preparedTarget = aTarget;
     
-    return self;
+    return _undoManagerProxy;
 }
 
 /*
     FIXME This method doesn't seem to do anything right
     @ignore
 */
--(CPMethodSignature)methodSignatureForSelector:(SEL)aSelector
+- (CPMethodSignature)_methodSignatureOfPreparedTargetForSelector:(SEL)aSelector
 {
     if ([_preparedTarget respondsToSelector:aSelector])
         return 1;
@@ -264,38 +279,39 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
     target on the invocation, and adds it to the current grouping.
     @param anInvocation the message to record
 */
-- (void)forwardInvocation:(CPInvocation)anInvocation
+- (void)_forwardInvocationToPreparedTarget:(CPInvocation)anInvocation
 {
+    // Don't do anything if we're disabled.
     if (_disableCount > 0)
         return;
-        
-/*    if (_preparedTarget == nil)
-        [NSException raise:NSInternalInconsistencyException
-                    format:@"forwardInvocation called without first preparing a target"];
-    if (_currentGroup == nil)
+
+/*
+if (_currentGroup == nil)
         [NSException raise:NSInternalInconsistencyException
                     format:@"forwardInvocation called without first opening an undo group"];
 */
     [anInvocation setTarget:_preparedTarget];
-    [_currentGrouping addInvocation:anInvocation];
 
-    if (_state == CPUndoManagerNormal)
-        [_redoStack removeAllObjects];
+    [self _addUndoInvocation:anInvocation];
 
     _preparedTarget = nil;
 }
 
 // Checking Undo Ability
 /*!
-    Returns <code>YES</code> if the user can perform a redo operation.
+    Returns \c YES if the user can perform a redo operation.
 */
 - (BOOL)canRedo
 {
-    return _redoStack.length > 0;
+    [[CPNotificationCenter defaultCenter]
+        postNotificationName:CPUndoManagerCheckpointNotification
+                      object:self];
+
+    return [_redoStack count] > 0;
 }
 
 /*!
-    Returns <code>YES</code> if the user can perform an undo operation.
+    Returns \c YES if the user can perform an undo operation.
 */
 - (BOOL)canUndo
 {
@@ -311,9 +327,9 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 */
 - (void)undo
 {
-    if ([self groupingLevel] == 1)
+    if ([self groupingLevel] === 1)
         [self endUndoGrouping];
-    
+
     [self undoNestedGroup];
 }
 
@@ -322,28 +338,31 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 */
 - (void)undoNestedGroup
 { 
-    if (_undoStack.length == 0)
+    if ([_undoStack count] <= 0)
         return;
-    
+
     var defaultCenter = [CPNotificationCenter defaultCenter];
-/*    [[NSNotificationCenter defaultCenter] postNotificationName:NSUndoManagerCheckpointNotification
-                                                        object:self];
-*/
-    [defaultCenter postNotificationName:CPUndoManagerWillUndoChangeNotification object:self];
+
+    [defaultCenter postNotificationName:CPUndoManagerCheckpointNotification
+                                 object:self];
+
+    [defaultCenter postNotificationName:CPUndoManagerWillUndoChangeNotification
+                                 object:self];
 
     var undoGrouping = _undoStack.pop();
-    
+
     _state = CPUndoManagerUndoing;
 
-    [self beginUndoGrouping];
+    [self _beginUndoGrouping];
     [undoGrouping invoke];
     [self endUndoGrouping];
-    
+
     [_CPUndoGrouping _poolUndoGrouping:undoGrouping];
-    
+
     _state = CPUndoManagerNormal;
 
-    [defaultCenter postNotificationName:CPUndoManagerDidUndoChangeNotification object:self];
+    [defaultCenter postNotificationName:CPUndoManagerDidUndoChangeNotification
+                                 object:self];
 }
 
 /*!
@@ -352,19 +371,21 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 - (void)redo
 {
     // Don't do anything if we have no redos.
-    if (_redoStack.length == 0)
+    if ([_redoStack count] <= 0)
         return;
     
 /*    if (_state == NSUndoManagerUndoing)
         [NSException raise:NSInternalInconsistencyException
                     format:@"redo called while undoing"];
-
-    [[NSNotificationCenter defaultCenter] postNotificationName:NSUndoManagerCheckpointNotification
-                                                        object:self];
 */
+
     var defaultCenter = [CPNotificationCenter defaultCenter];
 
-    [defaultCenter postNotificationName:CPUndoManagerWillRedoChangeNotification object:self];
+    [defaultCenter postNotificationName:CPUndoManagerCheckpointNotification
+                                 object:self];
+
+    [defaultCenter postNotificationName:CPUndoManagerWillRedoChangeNotification
+                                 object:self];
     
     var oldUndoGrouping = _currentGrouping,
         undoGrouping = _redoStack.pop();
@@ -372,7 +393,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
     _currentGrouping = nil;
     _state = CPUndoManagerRedoing;
 
-    [self beginUndoGrouping];
+    [self _beginUndoGrouping];
     [undoGrouping invoke];
     [self endUndoGrouping];
     
@@ -390,6 +411,29 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 */
 - (void)beginUndoGrouping
 {
+    // It doesn't matter that the user is creating a group themselves, we are
+    // pretending to have opened the group at the beginning of the run loop,
+    // so create an implicit one here.
+    if (!_currentGrouping && [self groupsByEvent])
+        [self _beginUndoGroupingForEvent];
+
+    [[CPNotificationCenter defaultCenter]
+        postNotificationName:CPUndoManagerCheckpointNotification
+                      object:self];
+
+    [self _beginUndoGrouping];
+}
+
+/* @ignore */
+- (void)_beginUndoGroupingForEvent
+{
+    [self _beginUndoGrouping];
+    [self _registerWithRunLoop];
+}
+
+/* @ignore */
+- (void)_beginUndoGrouping
+{
     _currentGrouping = [_CPUndoGrouping undoGroupingWithParent:_currentGrouping];
 }
 
@@ -402,17 +446,22 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
     if (!_currentGrouping)
         [CPException raise:CPInternalInconsistencyException reason:"endUndoGrouping. No undo group is currently open."];
 
+    var defaultCenter = [CPNotificationCenter defaultCenter];
+
+    [defaultCenter postNotificationName:CPUndoManagerCheckpointNotification
+                                 object:self];
+
     var parent = [_currentGrouping parent];
     
     if (!parent && [_currentGrouping invocations].length > 0)
     {
-        [[CPNotificationCenter defaultCenter]
+        [defaultCenter
             postNotificationName:CPUndoManagerWillCloseUndoGroupNotification
                           object:self];
                               
-        // Put this group on the redo stack if we are currently undoing, otherwise 
+        // Put this group on the redo stack if we are currently undoing, otherwise
         // put it on the undo stack.  That way, "undos" become "redos".
-        var stack = _state == CPUndoManagerUndoing ? _redoStack : _undoStack;
+        var stack = _state === CPUndoManagerUndoing ? _redoStack : _undoStack;
         
         stack.push(_currentGrouping);
     
@@ -447,7 +496,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 }
 
 /*!
-    Returns <code>YES</code> if the manager groups undo operations at every iteration of the run loop.
+    Returns \c YES if the manager groups undo operations at every iteration of the run loop.
 */
 - (BOOL)groupsByEvent
 {
@@ -456,25 +505,18 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 
 /*!
     Sets whether the manager should group undo operations at every iteration of the run loop.
-    @param aFlag <code>YES</code> groups undo operations
+    @param aFlag \c YES groups undo operations
 */
 - (void)setGroupsByEvent:(BOOL)aFlag
 {
-    if (_groupsByEvent == aFlag)
+    aFlag = !!aFlag;
+
+    if (_groupsByEvent === aFlag)
         return;
 
     _groupsByEvent = aFlag;
-    
-    if (_groupsByEvent)
-    {
-        [self _registerWithRunLoop];
-    
-        // There is a chance that the event loop selector won't fire before our first register,
-        // so kick it off here.
-        if (!_currentGrouping)
-            [self beginUndoGrouping];
-    }    
-    else
+
+    if (![self groupsByEvent])
         [self _unregisterWithRunLoop];
 }
 
@@ -502,7 +544,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 }
 
 /*!
-    Returns <code>YES</code> if undo registration is enabled.
+    Returns \c YES if undo registration is enabled.
 */
 - (BOOL)isUndoRegistrationEnabled
 {
@@ -511,19 +553,19 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 
 // Checking Whether Undo or Redo Is Being Performed
 /*!
-    Returns <code>YES</code> if the manager is currently performing an undo.
+    Returns \c YES if the manager is currently performing an undo.
 */
 - (BOOL)isUndoing
 {
-    return _state == CPUndoManagerUndoing;
+    return _state === CPUndoManagerUndoing;
 }
 
 /*!
-    Returns <code>YES</code> if the manager is currently performing a redo.
+    Returns \c YES if the manager is currently performing a redo.
 */
 - (BOOL)isRedoing
 {
-    return _state == CPUndoManagerRedoing;
+    return _state === CPUndoManagerRedoing;
 }
 
 // Clearing Undo Operations
@@ -584,8 +626,8 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 /*!
     If the receiver can perform a redo, this method returns the action
     name previously associated with the top grouping with
-    <code>-setActionName:</code>. This name should identify the action to be redone.
-    @return the redo action's name, or <code>nil</code> if no there's no redo on the stack.
+    \c -setActionName:. This name should identify the action to be redone.
+    @return the redo action's name, or \c nil if no there's no redo on the stack.
 */
 - (CPString)redoActionName
 {
@@ -595,8 +637,8 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 /*!
     If the receiver can perform an undo, this method returns the action
     name previously associated with the top grouping with
-    <code>-setActionName:</code>. This name should identify the action to be undone.
-    @return the undo action name or <code>nil</code> if no if there's no undo on the stack.
+    \c -setActionName:. This name should identify the action to be undone.
+    @return the undo action name or \c nil if no if there's no undo on the stack.
 */
 - (CPString)undoActionName
 {
@@ -606,7 +648,7 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 // Working With Run Loops
 /*!
     Returns the CPRunLoopModes in which the receiver registers
-    the <code>-endUndoGrouping</code> processing when it <code>-groupsByEvent</code>.
+    the \c -endUndoGrouping processing when it \c -groupsByEvent.
 */
 - (CPArray)runLoopModes
 {
@@ -615,35 +657,27 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
 
 /*!
     Sets the modes in which the receiver registers the calls
-    with the current run loop to invoke <code>-endUndoGrouping</code>
-    when it <code>-groupsByEvent</code>. This method first
+    with the current run loop to invoke \c -endUndoGrouping
+    when it \c -groupsByEvent. This method first
     cancels any pending registrations in the old modes and
     registers the invocation in the new modes.
     @param modes the modes in which calls are registered
 */
 - (void)setRunLoopModes:(CPArray)modes
 {
-    _runLoopModes = modes;
-    
-    [self _unregisterWithRunLoop];
-    
-    if (_groupsByEvent)
+    _runLoopModes = [modes copy];
+
+    if (_registeredWithRunLoop)
+    {
+        [self _unregisterWithRunLoop];
         [self _registerWithRunLoop];
+    }
 }
 
-/* @ignore */
-- (void)beginUndoGroupingForEvent
+- (void)_runLoopEndUndoGrouping
 {
-    if (!_groupsByEvent)
-        return;
-    
-    if (_currentGrouping != nil)
-        [self endUndoGrouping];
-
-    [self beginUndoGrouping];
-
-    [[CPRunLoop currentRunLoop] performSelector:@selector(beginUndoGroupingForEvent)
-        target:self argument:nil order:CPUndoCloseGroupingRunLoopOrdering modes:_runLoopModes];
+    [self endUndoGrouping];
+    _registeredWithRunLoop = NO;
 }
 
 /* @ignore */
@@ -653,8 +687,12 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
         return;
 
     _registeredWithRunLoop = YES;
-    [[CPRunLoop currentRunLoop] performSelector:@selector(beginUndoGroupingForEvent)
-        target:self argument:nil order:CPUndoCloseGroupingRunLoopOrdering modes:_runLoopModes];
+    [[CPRunLoop currentRunLoop]
+        performSelector:@selector(_runLoopEndUndoGrouping)
+                 target:self
+               argument:nil
+                  order:CPUndoCloseGroupingRunLoopOrdering
+                  modes:_runLoopModes];
 }
 
 /* @ignore */
@@ -664,7 +702,33 @@ var _CPUndoGroupingParentKey        = @"_CPUndoGroupingParentKey",
         return;
 
     _registeredWithRunLoop = NO;
-    [[CPRunLoop currentRunLoop] cancelPerformSelector:@selector(beginUndoGroupingForEvent) target:self argument:nil];
+    [[CPRunLoop currentRunLoop]
+        cancelPerformSelector:@selector(_runLoopEndUndoGrouping)
+                       target:self
+                     argument:nil];
+}
+
+- (void)observeChangesForKeyPath:(CPString)aKeyPath ofObject:(id)anObject
+{
+    [anObject addObserver:self
+              forKeyPath:aKeyPath
+                 options:CPKeyValueObservingOptionOld | CPKeyValueObservingOptionNew
+                 context:NULL];
+}
+
+- (void)stopObservingChangesForKeyPath:(CPString)aKeyPath ofObject:(id)anObject
+{
+    [anObject removeObserver:self forKeyPath:aKeyPath];
+}
+
+- (void)observeValueForKeyPath:(CPString)aKeyPath
+                      ofObject:(id)anObject
+                        change:(CPDictionary)aChange
+                       context:(id)aContext
+{
+    [[self prepareWithInvocationTarget:anObject]
+        applyChange:[aChange inverseChangeDictionary]
+          toKeyPath:aKeyPath];
 }
 
 @end
@@ -715,6 +779,23 @@ var CPUndoManagerRedoStackKey       = @"CPUndoManagerRedoStackKey",
 
     [aCoder encodeObject:_runLoopModes forKey:CPUndoManagerRunLoopModesKey];
     [aCoder encodeBool:_groupsByEvent forKey:CPUndoManagerGroupsByEventKey];
+}
+
+@end
+
+@implementation _CPUndoManagerProxy : CPProxy
+{
+    CPUndoManager   _undoManager;
+}
+
+- (CPMethodSignature)methodSignatureForSelector:(SEL)aSelector
+{
+    return [_undoManager _methodSignatureOfPreparedTargetForSelector:aSelector];
+}
+
+- (void)forwardInvocation:(CPInvocation)anInvocation
+{
+    [_undoManager _forwardInvocationToPreparedTarget:anInvocation];
 }
 
 @end

@@ -41,17 +41,19 @@
 */
 @implementation CPWindowController : CPResponder
 {
-    CPWindow    _window;
+    CPWindow            _window;
 
-    CPDocument  _document;
-    BOOL        _shouldCloseDocument;
+    CPArray             _documents;
+    CPDocument          _document;
+    BOOL                _shouldCloseDocument;
+    BOOL                _supportsMultipleDocuments;
 
-    id          _cibOwner;
-    CPString    _windowCibName;
-    CPString    _windowCibPath;
+    id                  _cibOwner;
+    CPString            _windowCibName;
+    CPString            _windowCibPath;
 
-    BOOL        _isWindowLoading;
-    BOOL        _shouldDisplayWindowWhenLoaded;
+    CPViewController    _viewController;
+    CPView              _viewControllerContainerView;
 }
 
 - (id)init
@@ -75,8 +77,7 @@
 
         [self setNextResponder:CPApp];
 
-        if (aWindow)
-            [self windowDidLoad];
+        _documents = [];
     }
 
     return self;
@@ -127,36 +128,12 @@
 /*!
     Loads the window
 */
-- (BOOL)loadWindow
+- (void)loadWindow
 {
-    if ([self isWindowLoaded])
-        return YES;
+    if (_window)
+        return;
 
-    if (![self isWindowLoading])
-    {
-        _isWindowLoading = YES;
-
-        [self windowWillLoad];
-
-        [CPBundle loadCibFile:[self windowCibPath]
-            externalNameTable:[CPDictionary dictionaryWithObject:_cibOwner forKey:CPCibOwner]
-                 loadDelegate:self];
-    }
-
-    return NO;
-}
-
-- (void)cibDidFinishLoading:(CPCib)aCib
-{
-    if (_window === nil && _document !== nil && _cibOwner === _document)
-        [self setWindow:[_document valueForKey:@"window"]];
-
-    [self synchronizeWindowTitleWithDocumentName];
-
-    [self windowDidLoad];
-
-    if (_shouldDisplayWindowWhenLoaded)
-        [self showWindow:self];
+    [[CPBundle bundleForClass:[_cibOwner class]] loadCibFile:[self windowCibPath] externalNameTable:[CPDictionary dictionaryWithObject:_cibOwner forKey:CPCibOwner]];
 }
 
 /*!
@@ -165,33 +142,21 @@
 */
 - (@action)showWindow:(id)aSender
 {
-    if (![self loadWindow])
-    {
-        _shouldDisplayWindowWhenLoaded = YES;
-
-        return;
-    }
-
     var theWindow = [self window];
 
-	if ([theWindow respondsToSelector:@selector(becomesKeyOnlyIfNeeded)] && [theWindow becomesKeyOnlyIfNeeded])
+    if ([theWindow respondsToSelector:@selector(becomesKeyOnlyIfNeeded)] && [theWindow becomesKeyOnlyIfNeeded])
         [theWindow orderFront:aSender];
     else
         [theWindow makeKeyAndOrderFront:aSender];
 }
 
 /*!
-    Returns <code>YES</code> if the window has been loaded. Specifically,
+    Returns \c YES if the window has been loaded. Specifically,
     if loadWindow has been called.
 */
 - (BOOL)isWindowLoaded
 {
     return _window !== nil;
-}
-
-- (BOOL)isWindowLoading
-{
-    return _isWindowLoading;
 }
 
 /*!
@@ -200,7 +165,28 @@
 - (CPWindow)window
 {
     if (!_window)
-         [self loadWindow];
+    {
+        [self windowWillLoad];
+        [_document windowControllerWillLoadCib:self];
+
+        [self loadWindow];
+
+        if (_window === nil && [_cibOwner isKindOfClass:[CPDocument class]])
+            [self setWindow:[_cibOwner valueForKey:@"window"]];
+        
+        if (!_window) 
+        {
+            var reason = [CPString stringWithFormat:@"Window for %@ could not be loaded from Cib or no window specified. \
+                                                        Override loadWindow to load the window manually.", self];
+
+            [CPException raise:CPInternalInconsistencyException reason:reason];
+        }
+
+        [self windowDidLoad];
+        [_document windowControllerDidLoadCib:self];
+
+        [self synchronizeWindowTitleWithDocumentName];
+    }
 
     return _window;
 }
@@ -224,9 +210,6 @@
 */
 - (void)windowDidLoad
 {
-    [_document windowControllerDidLoadCib:self];
-
-    [self synchronizeWindowTitleWithDocumentName];
 }
 
 /*!
@@ -234,7 +217,6 @@
 */
 - (void)windowWillLoad
 {
-    [_document windowControllerWillLoadCib:self];
 }
 
 /*!
@@ -250,6 +232,9 @@
 
     if (_document)
     {
+        if (![self supportsMultipleDocuments])
+            [self removeDocument:_document];
+        
         [defaultCenter removeObserver:self
                                  name:CPDocumentWillSaveNotification
                                object:_document];
@@ -267,6 +252,8 @@
 
     if (_document)
     {
+        [self addDocument:_document];
+
         [defaultCenter addObserver:self
                           selector:@selector(_documentWillSave:)
                               name:CPDocumentWillSaveNotification
@@ -285,7 +272,88 @@
         [self setDocumentEdited:[_document isDocumentEdited]];
     }
 
+    var viewController = [_document viewControllerForWindowController:self];
+
+    if (viewController)
+        [self setViewController:viewController];
+
     [self synchronizeWindowTitleWithDocumentName];
+}
+
+- (void)setSupportsMultipleDocuments:(BOOL)shouldSupportMultipleDocuments
+{
+    _supportsMultipleDocuments = shouldSupportMultipleDocuments;
+}
+
+- (BOOL)supportsMultipleDocuments
+{
+    return _supportsMultipleDocuments;
+}
+
+- (void)addDocument:(CPDocument)aDocument
+{
+    if (aDocument && ![_documents containsObject:aDocument])
+        [_documents addObject:aDocument];
+}
+
+- (void)removeDocument:(CPDocument)aDocument
+{
+    var index = [_documents indexOfObjectIdenticalTo:aDocument];
+
+    if (index === CPNotFound)
+        return;
+
+    [_documents removeObjectAtIndex:index];
+
+    if (_document === aDocument && [_documents count])
+        [self setDocument:[_documents objectAtIndex:MIN(index, [_documents count] - 1)]];
+}
+
+- (void)removeDocumentAndCloseIfNecessary:(CPDocument)aDocument
+{
+    [self removeDocument:aDocument];
+
+    if (![_documents count])
+        [self close];
+}
+
+- (CPArray)documents
+{
+    return _documents;
+}
+
+- (void)setViewControllerContainerView:(CPView)aView
+{
+    _viewControllerContainerView = aView;
+}
+
+- (void)viewControllerContainerView
+{
+    return _viewControllerContainerView;
+}
+
+- (void)setViewController:(CPViewController)aViewController
+{
+    var containerView = [self viewControllerContainerView] || [[self window] contentView],
+        view = [_viewController view],
+        frame = view ? [view frame] : [containerView bounds];
+
+    [view removeFromSuperview];
+
+    _viewController = aViewController;
+
+    view = [_viewController view];
+
+    if (view)
+    {
+        [view setFrame:frame];
+        [containerView addSubview:view];
+    }
+}
+
+- (CPViewController)viewController
+{
+    return _viewController;
 }
 
 /* @ignore */
@@ -316,7 +384,7 @@
 
 /*!
     Sets whether the document has unsaved changes. The window can use this as a hint to 
-    @param isEdited <code>YES</code> means the document has unsaved changes.
+    @param isEdited \c YES means the document has unsaved changes.
 */
 - (void)setDocumentEdited:(BOOL)isEdited
 {

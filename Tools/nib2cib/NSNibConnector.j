@@ -20,10 +20,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-@import <AppKit/_CPCibConnector.j>
+@import <AppKit/CPCibConnector.j>
+@import <AppKit/CPCibControlConnector.j>
+@import <AppKit/CPCibOutletConnector.j>
 
+NIB_CONNECTION_EQUIVALENCY_TABLE = {};
 
-@implementation _CPCibConnector (NSCoding)
+@implementation CPCibConnector (NSCoding)
 
 - (id)NS_initWithCoder:(CPCoder)aCoder
 {
@@ -35,6 +38,21 @@
         _destination = [aCoder decodeObjectForKey:@"NSDestination"];
         _label = [aCoder decodeObjectForKey:@"NSLabel"];
         
+        var sourceUID = [_source UID],
+            destinationUID = [_destination UID];
+
+        if (sourceUID in NIB_CONNECTION_EQUIVALENCY_TABLE)
+        {
+            CPLog.trace("Swapped object: "+_source+" for object: "+NIB_CONNECTION_EQUIVALENCY_TABLE[sourceUID]);
+            _source = NIB_CONNECTION_EQUIVALENCY_TABLE[sourceUID];
+        }
+
+        if (destinationUID in NIB_CONNECTION_EQUIVALENCY_TABLE)
+        {
+            CPLog.trace("Swapped object: "+_destination+" for object: "+NIB_CONNECTION_EQUIVALENCY_TABLE[destinationUID]);
+            _destination = NIB_CONNECTION_EQUIVALENCY_TABLE[destinationUID];
+        }
+
         CPLog.debug(@"Connection: " + [_source description] + " " + [_destination description] + " " + _label);
     }
     
@@ -43,7 +61,7 @@
 
 @end
 
-@implementation NSNibConnector : _CPCibConnector
+@implementation NSNibConnector : CPCibConnector
 {
 }
 
@@ -54,12 +72,12 @@
 
 - (Class)classForKeyedArchiver
 {
-    return [_CPCibConnector class];
+    return [CPCibConnector class];
 }
 
 @end
 
-@implementation NSNibControlConnector : _CPCibControlConnector
+@implementation NSNibControlConnector : CPCibControlConnector
 {
 }
 
@@ -70,12 +88,12 @@
 
 - (Class)classForKeyedArchiver
 {
-    return [_CPCibControlConnector class];
+    return [CPCibControlConnector class];
 }
 
 @end
 
-@implementation NSNibOutletConnector : _CPCibOutletConnector
+@implementation NSNibOutletConnector : CPCibOutletConnector
 {
 }
 
@@ -86,7 +104,7 @@
 
 - (Class)classForKeyedArchiver
 {
-    return [_CPCibOutletConnector class];
+    return [CPCibOutletConnector class];
 }
 
 @end

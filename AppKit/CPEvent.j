@@ -25,110 +25,26 @@
 #include "CoreGraphics/CGGeometry.h"
 
 
-/*
-    @global
-    @group CPEventType
-*/
 CPLeftMouseDown                         = 1;
-/*
-    @global
-    @group CPEventType
-*/
 CPLeftMouseUp                           = 2;
-/*
-    @global
-    @group CPEventType
-*/
 CPRightMouseDown                        = 3;
-/*
-    @global
-    @group CPEventType
-*/
 CPRightMouseUp                          = 4;
-/*
-    @global
-    @group CPEventType
-*/
 CPMouseMoved                            = 5;
-/*
-    @global
-    @group CPEventType
-*/
 CPLeftMouseDragged                      = 6;
-/*
-    @global
-    @group CPEventType
-*/
 CPRightMouseDragged                     = 7;
-/*
-    @global
-    @group CPEventType
-*/
 CPMouseEntered                          = 8;
-/*
-    @global
-    @group CPEventType
-*/
 CPMouseExited                           = 9;
-/*
-    @global
-    @group CPEventType
-*/
 CPKeyDown                               = 10;
-/*
-    @global
-    @group CPEventType
-*/
 CPKeyUp                                 = 11;
-/*
-    @global
-    @group CPEventType
-*/
 CPFlagsChanged                          = 12;
-/*
-    @global
-    @group CPEventType
-*/
 CPAppKitDefined                         = 13;
-/*
-    @global
-    @group CPEventType
-*/
 CPSystemDefined                         = 14;
-/*
-    @global
-    @group CPEventType
-*/
 CPApplicationDefined                    = 15;
-/*
-    @global
-    @group CPEventType
-*/
 CPPeriodic                              = 16;
-/*
-    @global
-    @group CPEventType
-*/
 CPCursorUpdate                          = 17; 
-/*
-    @global
-    @group CPEventType
-*/
 CPScrollWheel                           = 22;
-/*
-    @global
-    @group CPEventType
-*/
 CPOtherMouseDown                        = 25;
-/*
-    @global
-    @group CPEventType
-*/
 CPOtherMouseUp                          = 26;
-/*
-    @global
-    @group CPEventType
-*/
 CPOtherMouseDragged                     = 27;
 
 // iPhone Event Types
@@ -212,7 +128,7 @@ var _CPEventPeriodicEventPeriod         = 0,
     BOOL                _isARepeat;
     unsigned            _keyCode;
     DOMEvent            _DOMEvent;
-    
+
     float               _deltaX;
     float               _deltaY;
     float               _deltaZ;
@@ -221,16 +137,16 @@ var _CPEventPeriodicEventPeriod         = 0,
 /*!
     Creates a new keyboard event.
     @param anEventType the event type. Must be one of CPKeyDown, CPKeyUp or CPFlagsChanged
-    @param aPoint the location of the cursor in the window specified by <code>aWindowNumber</code>
+    @param aPoint the location of the cursor in the window specified by \c aWindowNumber
     @param modifierFlags a bitwise combination of the modifiers specified in the CPEvent globals
     @param aTimestamp the time the event occurred
     @param aWindowNumber the number of the CPWindow where the event occurred
     @param aGraphicsContext the graphics context where the event occurred
     @param characters the characters associated with the event
     @param unmodCharacters the string of keys pressed without the presence of any modifiers other than Shift
-    @param repeatKey <code>YES</code> if this is caused by the system repeat as opposed to the user pressing the key again
+    @param repeatKey \c YES if this is caused by the system repeat as opposed to the user pressing the key again
     @param code a number associated with the keyboard key of this event
-    @throws CPInternalInconsistencyException if <code>anEventType</code> is not a CPKeyDown,
+    @throws CPInternalInconsistencyException if \c anEventType is not a CPKeyDown,
     CPKeyUp or CPFlagsChanged
     @return the keyboard event
 */
@@ -246,7 +162,7 @@ var _CPEventPeriodicEventPeriod         = 0,
 /*!
     Creates a new mouse event
     @param anEventType the event type
-    @param aPoint the location of the cursor in the window specified by <code>aWindowNumber</code>
+    @param aPoint the location of the cursor in the window specified by \c aWindowNumber
     @param modifierFlags a bitwise combination of the modifiers specified in the CPEvent globals
     @param aTimestamp the time the event occurred
     @param aWindowNumber the number of the CPWindow where the event occurred
@@ -268,7 +184,7 @@ var _CPEventPeriodicEventPeriod         = 0,
 /*!
     Creates a new custom event
     @param anEventType the event type. Must be one of CPAppKitDefined, CPSystemDefined, CPApplicationDefined or CPPeriodic
-    @param aLocation the location of the cursor in the window specified by <code>aWindowNumber</code>
+    @param aLocation the location of the cursor in the window specified by \c aWindowNumber
     @param modifierFlags a bitwise combination of the modifiers specified in the CPEvent globals
     @param aTimestamp the time the event occurred
     @param aWindowNumber the number of the CPWindow where the event occurred
@@ -358,15 +274,26 @@ var _CPEventPeriodicEventPeriod         = 0,
 
 /*!
     Returns the location of the mouse (for mouse events).
-    If this is not a mouse event, it returns <code>nil</code>.
-    If <code>window</code> returns <code>nil</code>, then
+    If this is not a mouse event, it returns \c nil.
+    If \c window returns \c nil, then
     the mouse coordinates will be based on the screen coordinates.
     Otherwise, the coordinates are relative to the window's coordinates.
-    @return the location of the mouse, or <code>nil</code> for non-mouse events.
+    @return the location of the mouse, or \c nil for non-mouse events.
 */
 - (CGPoint)locationInWindow
 {
-    return _location;
+    return _CGPointMakeCopy(_location);
+}
+
+- (CGPoint)globalLocation
+{
+    var theWindow = [self window],
+        location = [self locationInWindow];
+
+    if (theWindow)
+        return [theWindow convertBaseToGlobal:location];
+
+    return location;
 }
 
 /*!
@@ -418,7 +345,10 @@ var _CPEventPeriodicEventPeriod         = 0,
 */
 - (int)buttonNumber
 {
-    return _buttonNumber;
+    if (_type === CPRightMouseDown || _type === CPRightMouseUp || _type === CPRightMouseDragged)
+        return 1;
+
+    return 0;
 }
 
 /*!
@@ -448,7 +378,7 @@ var _CPEventPeriodicEventPeriod         = 0,
 }
 
 /*!
-    Returns <code>YES</code> if the keyboard event was caused by the key being held down.
+    Returns \c YES if the keyboard event was caused by the key being held down.
     @throws CPInternalInconsistencyException if this method is called on a non-key event
 */
 - (BOOL)isARepeat
@@ -463,6 +393,18 @@ var _CPEventPeriodicEventPeriod         = 0,
 - (unsigned short)keyCode
 {
     return _keyCode;
+}
+
++ (CGPoint)mouseLocation
+{
+    // FIXME: this is incorrect, we shouldn't depend on the current event.
+    var event = [CPApp currentEvent],
+        eventWindow = [event window];
+
+    if (eventWindow)
+        return [eventWindow convertBaseToGlobal:[event locationInWindow]];
+
+    return [event locationInWindow];
 }
 
 - (float)pressure
@@ -503,8 +445,16 @@ var _CPEventPeriodicEventPeriod         = 0,
     return _deltaZ;
 }
 
+- (BOOL)_couldBeKeyEquivalent
+{
+    // FIXME: More cases? Space?
+    return  _type === CPKeyDown &&
+            _modifierFlags & (CPCommandKeyMask | CPControlKeyMask) &&
+            [_characters length] > 0;
+}
+
 /*!
-    Generates periodic events every <code>aPeriod</code> seconds.
+    Generates periodic events every \c aPeriod seconds.
     @param aDelay the number of seconds before the first event
     @param aPeriod the length of time in seconds between successive events
 */

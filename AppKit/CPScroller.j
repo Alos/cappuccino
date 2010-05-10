@@ -64,9 +64,9 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 
     BOOL                    _isVertical @accessors(readonly, getter=isVertical);
     float                   _knobProportion;
-    
+
     CPScrollerPart          _hitPart;
-    
+
     CPScrollerPart          _trackingPart;
     float                   _trackingFloatValue;
     CGPoint                 _trackingStartPoint;
@@ -79,7 +79,7 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 
 + (id)themeAttributes
 {
-    return [CPDictionary dictionaryWithObjects:[    nil, nil, nil, nil,
+    return [CPDictionary dictionaryWithObjects:[    [CPNull null], [CPNull null], [CPNull null], [CPNull null],
                                                     _CGSizeMakeZero(), _CGSizeMakeZero(), _CGInsetMakeZero(), _CGInsetMakeZero(), _CGSizeMakeZero()]
                                        forKeys:[    @"knob-slot-color",
                                                     @"decrement-line-color",
@@ -104,11 +104,12 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
         _controlSize = CPRegularControlSize;
         _partRects = [];
 
-        [self setFloatValue:0.0 knobProportion:1.0];
+        [self setFloatValue:0.0];
+        [self setKnobProportion:1.0];
         
         _hitPart = CPScrollerNoPart;
 
-        [self _recalculateIsVertical];
+        [self _calculateIsVertical];
     }
 
     return self;
@@ -120,7 +121,7 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 */
 + (float)scrollerWidth
 {
-    return 17.0;//[self scrollerWidthForControlSize:CPRegularControlSize];
+    return 15.0;//[self scrollerWidthForControlSize:CPRegularControlSize];
 }
 
 /*!
@@ -129,7 +130,7 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 */
 + (float)scrollerWidthForControlSize:(CPControlSize)aControlSize
 {
-    return 17.0;//_CPScrollerWidths[aControlSize];
+    return 15.0;//_CPScrollerWidths[aControlSize];
 }
 
 /*!
@@ -155,28 +156,17 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
     return _controlSize;
 }
 
-// Setting the Knob Position
-/*!
-    Sets the scroller's knob position (ranges from 0.0 to 1.0).
-    @param aValue the knob position (ranges from 0.0 to 1.0)
-*/
-- (void)setFloatValue:(float)aValue
+- (void)setObjectValue:(id)aValue
 {
-    [super setFloatValue:MIN(1.0, MAX(0.0, aValue))];
-    
-    [self setNeedsLayout];
+    [super setObjectValue:MIN(1.0, MAX(0.0, +aValue))];
 }
 
-/*!
-    Sets the position and proportion of the knob.
-    @param aValue the knob position (ranges from 0.0 to 1.0)
-    @param aProportion the knob's proportion (ranges from 0.0 to 1.0)
-*/
-- (void)setFloatValue:(float)aValue knobProportion:(float)aProportion
+- (void)setKnobProportion:(float)aProportion
 {
     _knobProportion = MIN(1.0, MAX(0.0001, aProportion));
 
-    [self setFloatValue:aValue];
+    [self setNeedsDisplay:YES];
+    [self setNeedsLayout];
 }
 
 /*!
@@ -208,7 +198,7 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 }
 
 /*!
-    Returns the part of the scroller that would be hit by <code>aPoint</code>.
+    Returns the part of the scroller that would be hit by \c aPoint.
     @param aPoint the simulated point hit
     @return the part of the scroller that intersects the point
 */
@@ -252,14 +242,14 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
     {
         _usableParts = CPNoScrollerParts;
     
-        _partRects[CPScrollerDecrementPage] = _CGRectMakeZero();
-        _partRects[CPScrollerKnob]          = _CGRectMakeZero();
-        _partRects[CPScrollerIncrementPage] = _CGRectMakeZero();
-        _partRects[CPScrollerDecrementLine] = _CGRectMakeZero();
-        _partRects[CPScrollerIncrementLine] = _CGRectMakeZero();
+        _partRects[CPScrollerDecrementPage] = CGRectMakeZero();
+        _partRects[CPScrollerKnob]          = CGRectMakeZero();
+        _partRects[CPScrollerIncrementPage] = CGRectMakeZero();
+        _partRects[CPScrollerDecrementLine] = CGRectMakeZero();
+        _partRects[CPScrollerIncrementLine] = CGRectMakeZero();
 
         // In this case, the slot is the entirety of the scroller.
-        _partRects[CPScrollerKnobSlot] = _CGRectMakeCopy(bounds);
+        _partRects[CPScrollerKnobSlot] = CGRectMakeCopy(bounds);
         
         return;
     }
@@ -289,9 +279,18 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
         _partRects[CPScrollerIncrementPage] = _CGRectMake(0.0, knobLocation + knobHeight, width, height - (knobLocation + knobHeight) - effectiveIncrementLineHeight);
         _partRects[CPScrollerKnobSlot]      = _CGRectMake(trackInset.left, effectiveDecrementLineHeight, width - trackInset.left - trackInset.right, slotHeight);
         _partRects[CPScrollerDecrementLine] = _CGRectMake(0.0, 0.0, decrementLineSize.width, decrementLineSize.height);
-        _partRects[CPScrollerIncrementLine] = _CGRectMake(0.0, height - incrementLineSize.height, incrementLineSize.width, incrementLineSize.height);  
+        _partRects[CPScrollerIncrementLine] = _CGRectMake(0.0, height - incrementLineSize.height, incrementLineSize.width, incrementLineSize.height);
+        
+        if(height < knobHeight + decrementLineSize.height + incrementLineSize.height + trackInset.top + trackInset.bottom)
+            _partRects[CPScrollerKnob] = _CGRectMakeZero();
+        
+        if(height < decrementLineSize.height + incrementLineSize.height - 2)
+        {
+            _partRects[CPScrollerIncrementLine] = _CGRectMakeZero();
+            _partRects[CPScrollerDecrementLine] = _CGRectMakeZero();
+            _partRects[CPScrollerKnobSlot]      = _CGRectMake(trackInset.left, 0,  width - trackInset.left - trackInset.right, height);
+        }
     }
-
     else
     {
         var decrementLineSize = [self currentValueForThemeAttribute:"decrement-line-size"],
@@ -310,6 +309,16 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
         _partRects[CPScrollerKnobSlot]      = _CGRectMake(effectiveDecrementLineWidth, trackInset.top, slotWidth, height - trackInset.top - trackInset.bottom);
         _partRects[CPScrollerDecrementLine] = _CGRectMake(0.0, 0.0, decrementLineSize.width, decrementLineSize.height);
         _partRects[CPScrollerIncrementLine] = _CGRectMake(width - incrementLineSize.width, 0.0, incrementLineSize.width, incrementLineSize.height);
+        
+        if(width < knobWidth + decrementLineSize.width + incrementLineSize.width + trackInset.left + trackInset.right)
+            _partRects[CPScrollerKnob] = _CGRectMakeZero();
+        
+        if(width < decrementLineSize.width + incrementLineSize.width - 2)
+        {
+            _partRects[CPScrollerIncrementLine] = _CGRectMakeZero();
+            _partRects[CPScrollerDecrementLine] = _CGRectMakeZero();
+            _partRects[CPScrollerKnobSlot]      = _CGRectMake(0.0, 0.0,  width, slotHeight);
+        }
     }
 }
 
@@ -533,15 +542,15 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 
 }
 
-- (void)_recalculateIsVertical
+- (void)_calculateIsVertical
 {
     // Recalculate isVertical.
     var bounds = [self bounds],
         width = _CGRectGetWidth(bounds),
         height = _CGRectGetHeight(bounds);
-    
+
     _isVertical = width < height ? 1 : (width > height ? 0 : -1);
-    
+
     if (_isVertical === 1)
         [self setThemeState:CPThemeStateVertical];
     else if (_isVertical === 0)
@@ -551,8 +560,6 @@ NAMES_FOR_PARTS[CPScrollerKnob]             = @"knob";
 - (void)setFrameSize:(CGSize)aSize
 {
     [super setFrameSize:aSize];
-
-    [self _recalculateIsVertical];
 
     [self checkSpaceForParts];
     [self setNeedsLayout];
@@ -590,18 +597,16 @@ var CPScrollerControlSizeKey = "CPScrollerControlSize",
         _controlSize = CPRegularControlSize;
         if ([aCoder containsValueForKey:CPScrollerControlSizeKey])
             _controlSize = [aCoder decodeIntForKey:CPScrollerControlSizeKey];
-            
+
         _knobProportion = 1.0;
         if ([aCoder containsValueForKey:CPScrollerKnobProportionKey])
             _knobProportion = [aCoder decodeFloatForKey:CPScrollerKnobProportionKey];
-            
+
         _partRects = [];
         
         _hitPart = CPScrollerNoPart;
 
-        [self _recalculateIsVertical];
-//        [self checkSpaceForParts];
-//        [self setNeedsLayout];
+        [self _calculateIsVertical];
     }
     
     return self;
@@ -613,6 +618,21 @@ var CPScrollerControlSizeKey = "CPScrollerControlSize",
     
     [aCoder encodeInt:_controlSize forKey:CPScrollerControlSizeKey];
     [aCoder encodeFloat:_knobProportion forKey:CPScrollerKnobProportionKey];
+}
+
+@end
+
+@implementation CPScroller (Deprecated)
+
+/*!
+    Sets the position and proportion of the knob.
+    @param aValue the knob position (ranges from 0.0 to 1.0)
+    @param aProportion the knob's proportion (ranges from 0.0 to 1.0)
+*/
+- (void)setFloatValue:(float)aValue knobProportion:(float)aProportion
+{
+    [self setFloatValue:aValue];
+    [self setKnobProportion:aProportion];
 }
 
 @end

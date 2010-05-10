@@ -27,8 +27,6 @@
 
 var CPCibOwner = @"CPCibOwner";
 
-var LoadInfoForCib = {};
-
 @implementation CPObject (CPCibLoading)
 
 - (void)awakeFromCib
@@ -39,38 +37,90 @@ var LoadInfoForCib = {};
 
 @implementation CPBundle (CPCibLoading)
 
-+ (void)loadCibFile:(CPString)anAbsolutePath externalNameTable:(CPDictionary)aNameTable loadDelegate:aDelegate
++ (CPCib)loadCibFile:(CPString)anAbsolutePath externalNameTable:(CPDictionary)aNameTable
 {
-    var cib = [[CPCib alloc] initWithContentsOfURL:anAbsolutePath loadDelegate:self];
-
-    LoadInfoForCib[[cib UID]] = { loadDelegate:aDelegate, externalNameTable:aNameTable };
+    return [[[CPCib alloc] initWithContentsOfURL:anAbsolutePath] instantiateCibWithExternalNameTable:aNameTable];
 }
 
-+ (void)loadCibNamed:(CPString)aName owner:(id)anOwner loadDelegate:(id)aDelegate
++ (CPCib)loadCibNamed:(CPString)aName owner:(id)anOwner
 {
-    // Path is based solely on anOwner:    
+    if (![aName hasSuffix:@".cib"])
+        aName = [aName stringByAppendingString:@".cib"];
+
+    // Path is based solely on anOwner:
+    var bundle = anOwner ? [CPBundle bundleForClass:[anOwner class]] : [CPBundle mainBundle],
+        path = [bundle pathForResource:aName];
+
+    return [self loadCibFile:path externalNameTable:[CPDictionary dictionaryWithObject:anOwner forKey:CPCibOwner]];
+}
+
+- (CPCib)loadCibFile:(CPString)aFileName externalNameTable:(CPDictionary)aNameTable
+{
+    return [[[CPCib alloc] initWithContentsOfURL:aFileName] instantiateCibWithExternalNameTable:aNameTable];
+}
+
++ (CPCib)loadCibFile:(CPString)anAbsolutePath externalNameTable:(CPDictionary)aNameTable loadDelegate:aDelegate
+{
+    return ([[CPCib alloc]
+    initWithContentsOfURL:anAbsolutePath
+             loadDelegate:[[_CPCibLoadDelegate alloc]
+                initWithLoadDelegate:aDelegate
+                   externalNameTable:aNameTable]]);
+}
+
++ (CPCib)loadCibNamed:(CPString)aName owner:(id)anOwner loadDelegate:(id)aDelegate
+{
+    if (![aName hasSuffix:@".cib"])
+        aName = [aName stringByAppendingString:@".cib"];
+
+    // Path is based solely on anOwner:
     var bundle = anOwner ? [CPBundle bundleForClass:[anOwner class]] : [CPBundle mainBundle],
         path = [bundle pathForResource:aName];
     
-    [self loadCibFile:path externalNameTable:[CPDictionary dictionaryWithObject:anOwner forKey:CPCibOwner] loadDelegate:aDelegate];
+    return [self loadCibFile:path externalNameTable:[CPDictionary dictionaryWithObject:anOwner forKey:CPCibOwner] loadDelegate:aDelegate];
 }
 
-- (void)loadCibFile:(CPString)aFileName externalNameTable:(CPDictionary)aNameTable loadDelegate:(id)aDelegate
+- (CPCib)loadCibFile:(CPString)aFileName externalNameTable:(CPDictionary)aNameTable loadDelegate:(id)aDelegate
 {
-    var cib = [[CPCib alloc] initWithCibNamed:aFileName bundle:self loadDelegate:[self class]];
-
-    LoadInfoForCib[[cib UID]] = { loadDelegate:aDelegate, externalNameTable:aNameTable };
+    return ([[CPCib alloc]
+        initWithCibNamed:aFileName
+                  bundle:self
+            loadDelegate:[[_CPCibLoadDelegate alloc]
+                initWithLoadDelegate:aDelegate
+                   externalNameTable:aNameTable]]);
 }
 
-+ (void)cibDidFinishLoading:(CPCib)aCib
+@end
+
+@implementation _CPCibLoadDelegate : CPObject
 {
-    var loadInfo = LoadInfoForCib[[aCib UID]];
-    
-    delete LoadInfoForCib[[aCib UID]];
-    
-    [aCib instantiateCibWithExternalNameTable:loadInfo.externalNameTable];
-    
-    [loadInfo.loadDelegate cibDidFinishLoading:aCib];
+    id              _loadDelegate;
+    CPDictionary    _externalNameTable;
+}
+
+- (id)initWithLoadDelegate:(id)aLoadDelegate externalNameTable:(id)anExternalNameTable
+{
+    self = [self init];
+
+    if (self)
+    {
+        _loadDelegate = aLoadDelegate;
+        _externalNameTable = anExternalNameTable;
+    }
+
+    return self;
+}
+
+- (void)cibDidFinishLoading:(CPCib)aCib
+{
+    [aCib instantiateCibWithExternalNameTable:_externalNameTable];
+
+    [_loadDelegate cibDidFinishLoading:aCib];
+}
+
+- (void)cibDidFailToLoad:(CPCib)aCib
+{
+    [_loadDelegate cibDidFailToLoad:aCib];
 }
 
 @end

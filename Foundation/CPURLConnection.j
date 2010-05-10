@@ -26,12 +26,6 @@
 @import "CPURLResponse.j"
 
 
-var XMLHTTPRequestUninitialized = 0,
-    XMLHTTPRequestLoading       = 1,
-    XMLHTTPRequestLoaded        = 2,
-    XMLHTTPRequestInteractive   = 3,
-    XMLHTTPRequestComplete      = 4;
-
 var CPURLConnectionDelegate = nil;
 
 /*!
@@ -84,8 +78,8 @@ var CPURLConnectionDelegate = nil;
     id              _delegate;
     BOOL            _isCanceled;
     BOOL            _isLocalFileConnection;
-    
-    XMLHTTPRequest  _XMLHTTPRequest;
+
+    HTTPRequest     _HTTPRequest;
 }
 
 + (void)setClassDelegate:(id)delegate
@@ -98,26 +92,26 @@ var CPURLConnectionDelegate = nil;
     @param aRequest contains the URL to request the data from
     @param aURLResponse not used
     @param anError not used
-    @return the data at the URL or <code>nil</code> if there was an error
+    @return the data at the URL or \c nil if there was an error
 */
-+ (CPData)sendSynchronousRequest:(CPURLRequest)aRequest returningResponse:({CPURLResponse})aURLResponse error:({CPError})anError
++ (CPData)sendSynchronousRequest:(CPURLRequest)aRequest returningResponse:({CPURLResponse})aURLResponse
 {
     try
     {
-        var request = objj_request_xmlhttp();
-        
-        request.open([aRequest HTTPMethod], [aRequest URL], NO);
-        
+        var request = new CFHTTPRequest();
+
+        request.open([aRequest HTTPMethod], [[aRequest URL] absoluteString], NO);
+
         var fields = [aRequest allHTTPHeaderFields],
             key = nil,
             keys = [fields keyEnumerator];
-        
+
         while (key = [keys nextObject])
             request.setRequestHeader(key, [fields objectForKey:key]);
-        
+
         request.send([aRequest HTTPBody]);
-        
-        return [CPData dataWithString:request.responseText];
+
+        return [CPData dataWithRawString:request.responseText()];
     }
     catch (anException)
     {
@@ -130,7 +124,7 @@ var CPURLConnectionDelegate = nil;
     Creates a url connection with a delegate to monitor the request progress.
     @param aRequest contains the URL to obtain data from
     @param aDelegate will be sent messages related to the request progress
-    @return a connection that can be <code>start<code>ed to initiate the request
+    @return a connection that can be \c started to initiate the request
 */
 + (CPURLConnection)connectionWithRequest:(CPURLRequest)aRequest delegate:(id)aDelegate
 {
@@ -141,7 +135,7 @@ var CPURLConnectionDelegate = nil;
     Default class initializer. Use one of the class methods instead.
     @param aRequest contains the URL to contact
     @param aDelegate will receive progress messages
-    @param shouldStartImmediately whether the <code>start</code> method should be called from here
+    @param shouldStartImmediately whether the \c -start method should be called from here
     @return the initialized url connection
 */
 - (id)initWithRequest:(CPURLRequest)aRequest delegate:(id)aDelegate startImmediately:(BOOL)shouldStartImmediately
@@ -154,20 +148,21 @@ var CPURLConnectionDelegate = nil;
         _delegate = aDelegate;
         _isCanceled = NO;
         
-        var path = [_request URL];
-        
+        var URL = [_request URL],
+            scheme = [URL scheme];
+
         // Browsers use "file:", Titanium uses "app:"
-        _isLocalFileConnection =    path.indexOf("file:") === 0 || 
-                                    ((path.indexOf("http:") !== 0 || path.indexOf("https:") !== 0) && 
+        _isLocalFileConnection =    scheme === "file" ||
+                                    ((scheme === "http" || scheme === "https:") &&
                                     window.location &&
                                     (window.location.protocol === "file:" || window.location.protocol === "app:"));
-        
-        _XMLHTTPRequest = objj_request_xmlhttp();
-            
+
+        _HTTPRequest = new CFHTTPRequest();
+
         if (shouldStartImmediately)
             [self start];
     }
-    
+
     return self;
 }
 
@@ -193,18 +188,18 @@ var CPURLConnectionDelegate = nil;
 
     try
     {   
-        _XMLHTTPRequest.open([_request HTTPMethod], [_request URL], YES);
-        
-        _XMLHTTPRequest.onreadystatechange = function() { [self _readyStateDidChange]; }
+        _HTTPRequest.open([_request HTTPMethod], [[_request URL] absoluteString], YES);
+
+        _HTTPRequest.onreadystatechange = function() { [self _readyStateDidChange]; }
 
         var fields = [_request allHTTPHeaderFields],
             key = nil,
             keys = [fields keyEnumerator];
-        
+
         while (key = [keys nextObject])
-            _XMLHTTPRequest.setRequestHeader(key, [fields objectForKey:key]);
-        
-        _XMLHTTPRequest.send([_request HTTPBody]);
+            _HTTPRequest.setRequestHeader(key, [fields objectForKey:key]);
+
+        _HTTPRequest.send([_request HTTPBody]);
     }
     catch (anException)
     {
@@ -222,7 +217,7 @@ var CPURLConnectionDelegate = nil;
     
     try
     {
-        _XMLHTTPRequest.abort();
+        _HTTPRequest.abort();
     }
     // We expect an exception in some browsers like FireFox.
     catch (anException)
@@ -238,9 +233,9 @@ var CPURLConnectionDelegate = nil;
 /* @ignore */
 - (void)_readyStateDidChange
 {
-    if (_XMLHTTPRequest.readyState == XMLHTTPRequestComplete)
+    if (_HTTPRequest.readyState() === CFHTTPRequest.CompleteState)
     {
-        var statusCode = _XMLHTTPRequest.status,
+        var statusCode = _HTTPRequest.status(),
             URL = [_request URL];
 
         if ([_delegate respondsToSelector:@selector(connection:didReceiveResponse:)])
@@ -258,12 +253,12 @@ var CPURLConnectionDelegate = nil;
         }
         if (!_isCanceled)
         {
-            if (statusCode == 401 && [CPURLConnectionDelegate respondsToSelector:@selector(connectionDidReceiveAuthenticationChallenge:)])
+            if (statusCode === 401 && [CPURLConnectionDelegate respondsToSelector:@selector(connectionDidReceiveAuthenticationChallenge:)])
                 [CPURLConnectionDelegate connectionDidReceiveAuthenticationChallenge:self];
             else
             {
                 if ([_delegate respondsToSelector:@selector(connection:didReceiveData:)])
-                    [_delegate connection:self didReceiveData:_XMLHTTPRequest.responseText];
+                    [_delegate connection:self didReceiveData:_HTTPRequest.responseText()];
                 if ([_delegate respondsToSelector:@selector(connectionDidFinishLoading:)])
                     [_delegate connectionDidFinishLoading:self];
             }
@@ -274,9 +269,27 @@ var CPURLConnectionDelegate = nil;
 }
 
 /* @ignore */
-- (void)_XMLHTTPRequest
+- (HTTPRequest)_HTTPRequest
 {
-    return _XMLHTTPRequest;
+    return _HTTPRequest;
+}
+
+@end
+
+@implementation CPURLConnection (Deprecated)
+
++ (CPData)sendSynchronousRequest:(CPURLRequest)aRequest returningResponse:({CPURLResponse})aURLResponse error:(id)anError
+{
+    _CPReportLenientDeprecation(self, _cmd, @selector(sendSynchronousRequest:returningResponse:));
+
+    return [self sendSynchronousRequest:aRequest returningResponse:aURLResponse];
+}
+
+- (HTTPRequest)_XMLHTTPRequest
+{
+    _CPReportLenientDeprecation(self, _cmd, @selector(_HTTPRequest));
+
+    return [self _HTTPRequest];
 }
 
 @end

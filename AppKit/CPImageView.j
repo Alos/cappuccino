@@ -31,23 +31,9 @@
 
 #include "CoreGraphics/CGGeometry.h"
 
-
-/*
-    @global
-    @group CPImageScaling
-*/
 CPScaleProportionally   = 0;
-/*
-    @global
-    @group CPImageScaling
-*/
 CPScaleToFit            = 1;
-/*
-    @global
-    @group CPImageScaling
-*/
 CPScaleNone             = 2;
-
 
 var CPImageViewShadowBackgroundColor = nil;
     
@@ -87,7 +73,13 @@ var LEFT_SHADOW_INSET       = 3.0,
         _DOMImageElement.style.position = "absolute";
         _DOMImageElement.style.left = "0px";
         _DOMImageElement.style.top = "0px";
-    
+
+        if ([CPPlatform supportsDragAndDrop])
+        {
+            _DOMImageElement.setAttribute("draggable", "true");
+            _DOMImageElement.style["-khtml-user-drag"] = "element";
+        }
+
         CPDOMDisplayServerAppendChild(_DOMElement, _DOMImageElement);
         
         _DOMImageElement.style.visibility = "hidden";
@@ -161,8 +153,8 @@ var LEFT_SHADOW_INSET       = 3.0,
 }
 
 /*!
-    Returns <code>YES</code> if the image view draws with
-    a drop shadow. The default is <code>NO</code>.
+    Returns \c YES if the image view draws with
+    a drop shadow. The default is \c NO.
 */
 - (BOOL)hasShadow
 {
@@ -217,6 +209,11 @@ var LEFT_SHADOW_INSET       = 3.0,
     
     [self setNeedsLayout];
     [self setNeedsDisplay:YES];
+}
+
+- (unsigned)imageScaling
+{
+    return [self currentValueForThemeAttribute:@"image-scaling"];
 }
 
 /*!
@@ -373,7 +370,10 @@ var LEFT_SHADOW_INSET       = 3.0,
     var images = [CPKeyedUnarchiver unarchiveObjectWithData:[[aSender draggingPasteboard] dataForType:CPImagesPboardType]];
 
     if ([images count])
+    {
         [self setImage:images[0]];
+        [self sendAction:[self action] to:[self target]];
+    }
 }
 
 @end
@@ -398,6 +398,11 @@ var CPImageViewImageKey         = @"CPImageViewImageKey",
     _DOMImageElement.style.left = "0px";
     _DOMImageElement.style.top = "0px";
     _DOMImageElement.style.visibility = "hidden";
+    if ([CPPlatform supportsDragAndDrop])
+    {
+        _DOMImageElement.setAttribute("draggable", "true");
+        _DOMImageElement.style["-khtml-user-drag"] = "element";
+    }
 #endif
 
     self = [super initWithCoder:aCoder];

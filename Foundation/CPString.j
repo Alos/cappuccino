@@ -56,7 +56,7 @@ CPAnchoredSearch        = 8;
 */
 CPNumericSearch         = 64;
 
-var CPStringHashes      = new objj_dictionary();
+var CPStringUIDs        = new CFMutableDictionary();
 
 var CPStringRegexSpecialCharacters = [
       '/', '.', '*', '+', '?', '|', '$', '^',
@@ -71,7 +71,7 @@ var CPStringRegexSpecialCharacters = [
     @brief An immutable string (collection of characters).
 
     CPString is an object that allows management of strings. Because CPString is
-    based on the JavaScript <code>String</code> object, CPStrings are immutable, although the
+    based on the JavaScript \c String object, CPStrings are immutable, although the
     class does have methods that create new CPStrings generated from modifications to the
     receiving instance.
 
@@ -108,8 +108,8 @@ var CPStringRegexSpecialCharacters = [
 
 /*!
     Returns a copy of the specified string.
-    @param aString a non-<code>nil</code> string to copy
-    @throws CPInvalidArgumentException if <code>aString</code> is <code>nil</code>
+    @param aString a non-\c nil string to copy
+    @throws CPInvalidArgumentException if \c aString is \c nil
     @return the new CPString
 */
 + (id)stringWithString:(CPString)aString
@@ -142,7 +142,7 @@ var CPStringRegexSpecialCharacters = [
         [CPException raise:CPInvalidArgumentException
                     reason:"initWithFormat: the format can't be 'nil'"];
 
-    self = sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
+    self = ObjectiveJ.sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
     return self;
 }
 
@@ -158,7 +158,7 @@ var CPStringRegexSpecialCharacters = [
         [CPException raise:CPInvalidArgumentException
                     reason:"initWithFormat: the format can't be 'nil'"];
 
-    return sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
+    return ObjectiveJ.sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
 }
 
 /*!
@@ -199,7 +199,7 @@ var CPStringRegexSpecialCharacters = [
     if (!format)
         [CPException raise:CPInvalidArgumentException reason:"initWithFormat: the format can't be 'nil'"];
 
-    return self + sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
+    return self + ObjectiveJ.sprintf.apply(this, Array.prototype.slice.call(arguments, 2));
 }
 
 /*!
@@ -249,11 +249,11 @@ var CPStringRegexSpecialCharacters = [
 /*!
     Tokenizes the receiver string using the specified
     delimiter. For example, if the receiver is:
-    <pre>"arash.francisco.ross.tom"</pre>
+    \c "arash.francisco.ross.tom"
     and the delimiter is:
-    <pre>"."</pre>
+    \c "."
     the returned array would contain:
-    <pre>["arash", "francisco", "ross", "tom"]</pre>
+    <pre> ["arash", "francisco", "ross", "tom"] </pre>
     @param the delimiter
     @return the array of tokens
 */
@@ -273,7 +273,7 @@ var CPStringRegexSpecialCharacters = [
 }
 
 /*!
-    Returns a substring starting from the specified range <code>location</code> to the range <code>length</code>.
+    Returns a substring starting from the specified range \c location to the range \c length.
     @param the range of the substring
     @return the substring
 */
@@ -296,7 +296,7 @@ var CPStringRegexSpecialCharacters = [
 
 /*!
     Finds the range of characters in the receiver where the specified string exists. If the string
-    does not exist in the receiver, the range <code>length</code> will be 0.
+    does not exist in the receiver, the range \c length will be 0.
     @param aString the string to search for in the receiver
     @return the range of charactrs in the receiver
 */
@@ -320,7 +320,7 @@ var CPStringRegexSpecialCharacters = [
     @param aString the string to search for
     @param aMask the options to use in the search
     @return the range of characters in the receiver. If the string was not found,
-    the <code>length</code> of the range will be 0.
+    the \c length of the range will be 0.
 */
 - (CPRange)rangeOfString:(CPString)aString options:(int)aMask
 {
@@ -343,7 +343,7 @@ var CPStringRegexSpecialCharacters = [
     @param aMask the options to use in the search
     @param aRange the range of the receiver in which to search for
     @return the range of characters in the receiver. If the string was not found,
-    the <code>length</code> of the range will be 0.
+    the \c length of the range will be 0.
 */
 - (CPRange)rangeOfString:(CPString)aString options:(int)aMask range:(CPrange)aRange
 {
@@ -377,7 +377,7 @@ var CPStringRegexSpecialCharacters = [
     Returns a new string in which all occurrences of a target string in the reciever are replaced by 
     another given string.
     @param target The string to replace.
-    @param replacement the string with which to replace the <pre>target<pre>
+    @param replacement the string with which to replace the \c target
 */
 
 - (CPString)stringByReplacingOccurrencesOfString:(CPString)target withString:(CPString)replacement
@@ -389,9 +389,9 @@ var CPStringRegexSpecialCharacters = [
     Returns a new string in which all occurrences of a target string in a specified range of the receiver
     are replaced by another given string.
     @param target The string to replace
-    @param replacement the string with which to replace the <pre>target<pre>
-    @param options A mask of options to use when comparing <pre>target<pre> with the receiver. Pass 0 to specify no options
-    @param searchRange The range in the receiver in which to search for <pre>target<pre>.
+    @param replacement the string with which to replace the \c target.
+    @param options A mask of options to use when comparing \c target with the receiver. Pass 0 to specify no options
+    @param searchRange The range in the receiver in which to search for \c target.
 */
 
 - (CPString)stringByReplacingOccurrencesOfString:(CPString)target withString:(CPString)replacement options:(int)options range:(CPRange)searchRange
@@ -414,7 +414,7 @@ var CPStringRegexSpecialCharacters = [
    Returns a new string in which the characters in a specified range of the receiver 
    are replaced by a given string.
    @param range A range of characters in the receiver.
-   @param replacement The string with which to replace the characters in <pre>range</pre>.
+   @param replacement The string with which to replace the characters in \c range.
 */
 
 - (CPString)stringByReplacingCharactersInRange:(CPRange)range withString:(CPString)replacement
@@ -494,9 +494,9 @@ var CPStringRegexSpecialCharacters = [
 }
 
 /*!
-    Returns <code>YES</code> if the receiver starts
-    with the specified string. If <code>aString</code>
-    is empty, the method will return <code>NO</code>.
+    Returns \c YES if the receiver starts
+    with the specified string. If \c aString
+    is empty, the method will return \c NO.
 */
 - (BOOL)hasPrefix:(CPString)aString
 {
@@ -504,17 +504,17 @@ var CPStringRegexSpecialCharacters = [
 }
 
 /*!
-    Returns <code>NO</code> if the receiver ends
-    with the specified string. If <code>aString</code>
-    is empty, the method will return <code>NO</code>.
+    Returns \c NO if the receiver ends
+    with the specified string. If \c aString
+    is empty, the method will return \c NO.
 */
 - (BOOL)hasSuffix:(CPString)aString
 {
-    return aString && aString != "" && lastIndexOf(aString) == (length - aString.length);
+    return aString && aString != "" && length >= aString.length && lastIndexOf(aString) == (length - aString.length);
 }
 
 /*!
-    Returns <code>YES</code> if the specified string contains the same characters as the receiver.
+    Returns \c YES if the specified string contains the same characters as the receiver.
 */
 - (BOOL)isEqualToString:(CPString)aString
 {
@@ -526,15 +526,53 @@ var CPStringRegexSpecialCharacters = [
 */
 - (unsigned)UID
 {
-    var hash = dictionary_getValue(CPStringHashes, self);
-    
-    if (!hash) 
+    var UID = CPStringUIDs.valueForKey(self);
+
+    if (!UID)
     {
-        hash = _objj_generateObjectHash();
-        dictionary_setValue(CPStringHashes, self, hash);
+        UID = objj_generateObjectUID();
+        CPStringUIDs.setValueForKey(self, UID);
     }
+
+    return UID + "";
+}
+
+/*!
+    Returns a string containing characters the receiver and a given string have in common, starting from
+    the beginning of each up to the first characters that aren't equivalent.
+    @param aString the string with which to compare the receiver
+*/
+- (CPString)commonPrefixWithString:(CPString)aString
+{
+    return [self commonPrefixWithString: aString options: 0];
+}
+
+/*!
+    Returns a string containing characters the receiver and a given string have in common, starting from
+    the beginning of each up to the first characters that aren't equivalent.
+    @param aString the string with which to compare the receiver
+    @param aMask options for comparision
+*/
+- (CPString)commonPrefixWithString:(CPString)aString options:(int)aMask
+{
+    var len = 0, // length of common prefix
+        lhs = self,
+        rhs = aString,
+        min = MIN([lhs length], [rhs length]);
     
-    return hash;
+    if (aMask & CPCaseInsensitiveSearch)
+    {
+        lhs = [lhs lowercaseString];
+        rhs = [rhs lowercaseString];
+    }
+
+    for (; len < min; len++ )
+    {
+        if ( [lhs characterAtIndex:len] !== [rhs characterAtIndex:len] )
+            break;
+    }
+
+    return [self substringToIndex:len];
 }
 
 /*!
@@ -577,8 +615,8 @@ var CPStringRegexSpecialCharacters = [
     return parseFloat(self, 10);
 }
 /*!
-    Returns <code>YES</code> on encountering one of "Y", "y", "T", "t", or 
-    a digit 1-9. Returns <code>NO</code> otherwise. This method skips the initial 
+    Returns \c YES on encountering one of "Y", "y", "T", "t", or 
+    a digit 1-9. Returns \c NO otherwise. This method skips the initial 
     whitespace characters, +,- followed by Zeroes.
 */
 
@@ -626,6 +664,9 @@ var CPStringRegexSpecialCharacters = [
 */
 - (CPString)pathExtension
 {
+    if (lastIndexOf('.') === CPNotFound)
+        return "";
+
     return substr(lastIndexOf('.') + 1);
 }
 
@@ -659,6 +700,21 @@ var CPStringRegexSpecialCharacters = [
         return '/';
 
     return path;
+}
+
+/*!
+    Deletes the extension of a string.
+*/
+- (CPString)stringByDeletingPathExtension
+{
+    var extension = [self pathExtension];
+    if (extension === "")
+        return self;
+
+    if (lastIndexOf('.') < 1)
+        return self;
+
+    return substr(0, [self length] - (extension.length + 1));
 }
 
 - (CPString)stringByStandardizingPath

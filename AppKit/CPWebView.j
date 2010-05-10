@@ -150,8 +150,10 @@ CPWebViewScrollNative                           = 2;
 	
 	
     _frameView = [[CPView alloc] initWithFrame:[self bounds]];
+    [_frameView setAutoresizingMask:CPViewWidthSizable|CPViewHeightSizable];
 
     _scrollView = [[CPScrollView alloc] initWithFrame:[self bounds]];
+    [_scrollView setAutohidesScrollers:YES];
     [_scrollView setAutoresizingMask:CPViewWidthSizable|CPViewHeightSizable];
     [_scrollView setDocumentView:_frameView];
 	
@@ -166,11 +168,35 @@ CPWebViewScrollNative                           = 2;
 - (void)setFrameSize:(CPSize)aSize
 {   
     [super setFrameSize:aSize];
-    
     [self _resizeWebFrame];
 }
 
-- (BOOL)_resizeWebFrame
+- (void)_attachScrollEventIfNecessary
+{
+    if (_scrollMode !== CPWebViewScrollAppKit)
+        return;
+
+    var win = null;
+    try { win = [self DOMWindow]; } catch (e) {}
+
+    if (win && win.addEventListener)
+    {
+        var scrollEventHandler = function(anEvent)
+        {
+            var frameBounds = [self bounds],
+                frameCenter = CGPointMake(CGRectGetMidX(frameBounds), CGRectGetMidY(frameBounds)),
+                windowOrigin = [self convertPoint:frameCenter toView:nil],
+                globalOrigin = [[self window] convertBaseToBridge:windowOrigin];
+
+            anEvent._overrideLocation = globalOrigin;
+            [[[self window] platformWindow] scrollEvent:anEvent];
+        };
+
+        win.addEventListener("DOMMouseScroll", scrollEventHandler, false);
+    }
+}
+
+- (void)_resizeWebFrame
 {
     if (_scrollMode === CPWebViewScrollAppKit)
     {
@@ -180,13 +206,14 @@ CPWebViewScrollNative                           = 2;
         }
         else
         {
-            [_frameView setFrameSize:[_scrollView bounds].size];
+            var visibleRect = [_frameView visibleRect];
+            [_frameView setFrameSize:CGSizeMake(CGRectGetMaxX(visibleRect), CGRectGetMaxY(visibleRect))];
             
             // try to get the document size so we can correctly set the frame
             var win = null;
             try { win = [self DOMWindow]; } catch (e) {}
 
-            if (win && win.document)
+            if (win && win.document && win.document.body)
             {
                 var width = win.document.body.scrollWidth,
                     height = win.document.body.scrollHeight;
@@ -202,6 +229,8 @@ CPWebViewScrollNative                           = 2;
             
                 [_frameView setFrameSize:CGSizeMake(800, 1600)];
             }
+
+            [_frameView scrollRectToVisible:visibleRect];
         }
     }
 }
@@ -254,6 +283,8 @@ CPWebViewScrollNative                           = 2;
     // FIXME: do something with baseURL?
 
     [self _setScrollMode:CPWebViewScrollAppKit];
+
+    [_frameView setFrameSize:[_scrollView contentSize]];
 
     [self _startedLoading];
     
@@ -314,7 +345,8 @@ CPWebViewScrollNative                           = 2;
 - (void)_finishedLoading
 {
     [self _resizeWebFrame];
-    
+    [self _attachScrollEventIfNecessary];
+
     [[CPNotificationCenter defaultCenter] postNotificationName:CPWebViewProgressFinishedNotification object:self];
 
     if ([_frameLoadDelegate respondsToSelector:@selector(webView:didFinishLoadForFrame:)])

@@ -24,8 +24,8 @@
 @import "CPObjJRuntime.j"
 
 
-var __placeholder = new Number(),
-    _CPNumberHashes = { };
+var __placeholder   = new Number(),
+    CPNumberUIDs    = new CFMutableDictionary();
 
 /*! 
     @class CPNumber
@@ -33,7 +33,7 @@ var __placeholder = new Number(),
     @brief A bridged object to native Javascript numbers.
 
     This class primarily exists for source compatability. The JavaScript
-    <code>Number</code> type can be changed on the fly based on context,
+    \c Number type can be changed on the fly based on context,
     so there is no need to call any of these methods. 
     
     In other words, native JavaScript numbers are bridged to CPNumber,
@@ -55,7 +55,7 @@ var __placeholder = new Number(),
 {
     if (aChar.charCodeAt)
         return aChar.charCodeAt(0);
-    
+
     return aChar;
 }
 
@@ -190,10 +190,15 @@ var __placeholder = new Number(),
 
 - (CPString)UID
 {
-    if (!_CPNumberHashes[self])
-        _CPNumberHashes[self] = _objj_generateObjectHash();
-        
-    return _CPNumberHashes[self];
+    var UID = CPNumberUIDs.valueForKey(self);
+
+    if (!UID)
+    {
+        UID = objj_generateObjectUID();
+        CPNumberUIDs.setValueForKey(self, UID);
+    }
+
+    return UID + "";
 }
 
 - (BOOL)boolValue

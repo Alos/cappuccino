@@ -24,6 +24,7 @@
 @import <Foundation/CPBundle.j>
 
 @import "CPDocument.j"
+@import "CPOpenPanel.j";
 
 
 var CPSharedDocumentController = nil;
@@ -78,7 +79,7 @@ var CPSharedDocumentController = nil;
     method searches documents already open. It does not
     open the document at the URL if it is not already open.
     @param aURL the url of the document
-    @return the document, or <code>nil</code> if such a document is not open
+    @return the document, or \c nil if such a document is not open
 */
 - (CPDocument)documentForURL:(CPURL)aURL
 {
@@ -113,7 +114,7 @@ var CPSharedDocumentController = nil;
         [theDocument makeWindowControllers];
         [theDocument showWindows];
     }
-        
+
     return theDocument;
 }
 
@@ -138,16 +139,21 @@ var CPSharedDocumentController = nil;
 - (CPDocument)openDocumentWithContentsOfURL:(CPURL)anAbsoluteURL display:(BOOL)shouldDisplay error:(CPError)anError
 {
     var result = [self documentForURL:anAbsoluteURL];
-    
+
     if (!result)
     {
         var type = [self typeForContentsOfURL:anAbsoluteURL error:anError];
-        
+
         result = [self makeDocumentWithContentsOfURL:anAbsoluteURL ofType:type delegate:self didReadSelector:@selector(document:didRead:contextInfo:) contextInfo:[CPDictionary dictionaryWithObject:shouldDisplay forKey:@"shouldDisplay"]];
+
+        [self addDocument:result];
+
+        if (result)
+            [self noteNewRecentDocument:result];
     }
     else if (shouldDisplay)
         [result showWindows];
-    
+
     return result;
 }
 
@@ -157,7 +163,7 @@ var CPSharedDocumentController = nil;
     @param anAbsoluteURL the document URL
     @param absoluteContentsURL the location of the document's contents
     @param anError not used
-    @return the loaded document or <code>nil</code> if there was an error
+    @return the loaded document or \c nil if there was an error
 */
 - (CPDocument)reopenDocumentForURL:(CPURL)anAbsoluteURL withContentsOfURL:(CPURL)absoluteContentsURL error:(CPError)anError
 {
@@ -187,7 +193,7 @@ var CPSharedDocumentController = nil;
     @param aDelegate receives a callback after the load has completed
     @param aSelector the selector to invoke for the callback
     @param aContextInfo an object passed as an argument for the callback
-    @return a new document or <code>nil</code> if there was an error
+    @return a new document or \c nil if there was an error
 */
 - (CPDocument)makeDocumentForURL:(CPURL)anAbsoluteURL withContentsOfURL:(CPURL)absoluteContentsURL ofType:(CPString)aType delegate:(id)aDelegate didReadSelector:(SEL)aSelector contextInfo:(id)aContextInfo
 {
@@ -203,7 +209,6 @@ var CPSharedDocumentController = nil;
     if (!didRead)
         return;
 
-    [self addDocument:aDocument];
     [aDocument makeWindowControllers];
     
     if ([aContextInfo objectForKey:@"shouldDisplay"])
@@ -219,6 +224,20 @@ var CPSharedDocumentController = nil;
     [self openUntitledDocumentOfType:[[_documentTypes objectAtIndex:0] objectForKey:@"CPBundleTypeName"] display:YES];
 }
 
+-(void)openDocument:(id)aSender
+{
+    var openPanel = [CPOpenPanel openPanel];
+
+    [openPanel runModal];
+
+    var URLs = [openPanel URLs],
+        index = 0,
+        count = [URLs count];
+
+    for (; index < count; ++index)
+        [self openDocumentWithContentsOfURL:[CPURL URLWithString:URLs[index]] display:YES error:nil];
+}
+
 // Managing Documents
 
 /*!
@@ -231,7 +250,7 @@ var CPSharedDocumentController = nil;
 }
 
 /*!
-    Adds <code>aDocument</code> under the control of the receiver.
+    Adds \c aDocument under the control of the receiver.
     @param aDocument the document to add
 */
 - (void)addDocument:(CPDocument)aDocument
@@ -240,7 +259,7 @@ var CPSharedDocumentController = nil;
 }
 
 /*!
-    Removes <code>aDocument</code> from the control of the receiver.
+    Removes \c aDocument from the control of the receiver.
     @param aDocument the document to remove
 */
 - (void)removeDocument:(CPDocument)aDocument
@@ -258,7 +277,8 @@ var CPSharedDocumentController = nil;
     var index = 0,
         count = _documentTypes.length,
         
-        extension = [[anAbsoluteURL pathExtension] lowercaseString];
+        extension = [[anAbsoluteURL pathExtension] lowercaseString],
+        starType = nil;
     
     for (; index < count; ++index)
     {
@@ -268,12 +288,17 @@ var CPSharedDocumentController = nil;
             extensionCount = extensions.length;
         
         for (; extensionIndex < extensionCount; ++extensionIndex)
-            if ([extensions[extensionIndex] lowercaseString] == extension)
+        {
+            var thisExtension = [extensions[extensionIndex] lowercaseString];
+            if (thisExtension === extension)
                 return [documentType objectForKey:@"CPBundleTypeName"];
+
+            if (thisExtension === "****")
+                starType = [documentType objectForKey:@"CPBundleTypeName"];
+        }
     }
 
-    // FIXME?
-    return [self defaultType];//nil;
+    return starType || [self defaultType];
 }
 
 // Managing Document Types
@@ -296,15 +321,137 @@ var CPSharedDocumentController = nil;
 }
 
 /*!
-    Returns the CPDocument subclass associated with <code>aType</code>.
+    Returns the CPDocument subclass associated with \c aType.
     @param aType the type of document
-    @return a Cappuccino Class object, or <code>nil</code> if no match was found
+    @return a Cappuccino Class object, or \c nil if no match was found
 */
 - (Class)documentClassForType:(CPString)aType
 {
     var className = [[self _infoForType:aType] objectForKey:@"CPDocumentClass"];
 
     return className ? CPClassFromString(className) : nil;
+}
+
+@end
+
+@implementation CPDocumentController (Closing)
+
+- (void)closeAllDocumentsWithDelegate:(id)aDelegate didCloseAllSelector:(SEL)didCloseSelector contextInfo:(Object)info 
+{
+    var context = {
+        delegate: aDelegate,
+        selector: didCloseSelector,
+        context: info
+    };
+
+    [self _closeDocumentsStartingWith:nil shouldClose:YES context:context];
+}
+
+// Recursive callback method. Start it by passing in a document of nil.
+- (void)_closeDocumentsStartingWith:(CPDocument)aDocument shouldClose:(BOOL)shouldClose context:(Object)context
+{
+    if (shouldClose)
+    {
+        [aDocument close];
+
+        if ([[self documents] count] > 0)
+        {
+            [[[self documents] lastObject] canCloseDocumentWithDelegate:self
+                                                    shouldCloseSelector:@selector(_closeDocumentsStartingWith:shouldClose:context:)
+                                                            contextInfo:context];
+            return;
+        }
+    }
+
+    if ([context.delegate respondsToSelector:context.selector])
+        objj_msgSend(context.delegate, context.selector, self, [[self documents] count] === 0, context.context);
+}
+
+@end
+
+@implementation CPDocumentController (Recents)
+
+- (CPArray)recentDocumentURLs
+{
+    // FIXME move this to CP land
+    if (typeof window["cpRecentDocumentURLs"] === 'function')
+        return window.cpRecentDocumentURLs();
+
+    return [];
+}
+
+- (void)clearRecentDocuments:(id)sender
+{
+    if (typeof window["cpClearRecentDocuments"] === 'function')
+        window.cpClearRecentDocuments();
+
+   [self _updateRecentDocumentsMenu];
+}
+
+- (void)noteNewRecentDocument:(CPDocument)aDocument
+{
+    [self noteNewRecentDocumentURL:[[aDocument fileURL] absoluteString]];
+}
+
+- (void)noteNewRecentDocumentURL:(CPString)aURL
+{
+    if (typeof window["cpNoteNewRecentDocumentPath"] === 'function')
+        window.cpNoteNewRecentDocumentPath(aURL);
+
+   [self _updateRecentDocumentsMenu];
+}
+
+- (void)_removeAllRecentDocumentsFromMenu:(CPMenu)aMenu
+{
+    var items = [aMenu itemArray],
+        count = [items count];
+
+    while (count--)
+    {
+        var item = items[count];
+
+        if ([item action] === @selector(_openRecentDocument:))
+            [aMenu removeItemAtIndex:count];
+    }
+}
+
+- (void)_updateRecentDocumentsMenu
+{
+    var menu = [[CPApp mainMenu] _menuWithName:@"_CPRecentDocumentsMenu"],
+        recentDocuments = [self recentDocumentURLs],
+        menuItems = [menu itemArray],
+        documentCount = [recentDocuments count],
+        menuItemCount = [menuItems count];
+
+    [self _removeAllRecentDocumentsFromMenu:menu];
+
+    if (menuItemCount)
+    {
+        if (!documentCount)
+        {
+            if ([menuItems[0] isSeparatorItem])
+                [menu removeItemAtIndex:0];
+        }
+        else
+        {
+            if (![menuItems[0] isSeparatorItem])
+                [menu insertItem:[CPMenuItem separatorItem] atIndex:0];
+        }
+    }
+
+    while (documentCount--)
+    {
+        var path = recentDocuments[documentCount],
+            item = [[CPMenuItem alloc] initWithTitle:[path lastPathComponent] action:@selector(_openRecentDocument:) keyEquivalent:nil];
+
+        [item setTag:path];
+        [menu insertItem:item atIndex:0];
+    }
+}
+
+- (void)_openRecentDocument:(id)sender
+{
+    [self openDocumentWithContentsOfURL:[sender tag] display:YES error:nil];
 }
 
 @end

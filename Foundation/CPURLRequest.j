@@ -62,7 +62,8 @@
     
     if (self)
     {
-        _URL = aURL;
+        [self setURL:aURL];
+
         _HTTPBody = @"";
         _HTTPMethod = @"GET";
         _HTTPHeaderFields = [CPDictionary dictionary];
@@ -89,7 +90,8 @@
 */
 - (void)setURL:(CPURL)aURL
 {
-    _URL = aURL;
+    // Lenient and accept strings.
+    _URL = new CFURL(aURL);
 }
 
 /*!

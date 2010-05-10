@@ -55,9 +55,9 @@
     To get description value you can use %@ specifier everywhere where format
     specifiers are allowed:
     <pre>var inst = [[SomeClass alloc] initWithSomeValue:10];
-CPLog(@"Got some class: %@", inst);</pre>
+CPLog(@"Got some class: %@", inst);
     would output:
-    <pre>Got some class: <SomeClass 10></pre>
+    \c Got \c some \c class: \c <SomeClass \c 10>
     
     @todo document KVC usage.
 */
@@ -76,7 +76,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 }
 
 /*!
-    Allocates a new instance of the receiver, and sends it an <code>init</code>
+    Allocates a new instance of the receiver, and sends it an \c -init
     @return the new object
 */
 + (id)new
@@ -158,7 +158,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 }
 
 /*!
-    Returns <code>YES</code> if the receiving class is a subclass of <code>aClass</code>.
+    Returns \c YES if the receiving class is a subclass of \c aClass.
     @param aClass the class to test inheritance from
 */
 + (BOOL)isSubclassOfClass:(Class)aClass
@@ -173,7 +173,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 }
 
 /*!
-    Returns <code>YES</code> if the receiver is a <code>aClass</code> type, or a subtype of it.
+    Returns \c YES if the receiver is a \c aClass type, or a subtype of it.
     @param aClass the class to test as the receiver's class or super class.
 */
 - (BOOL)isKindOfClass:(Class)aClass
@@ -187,7 +187,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 }
 
 /*!
-    Returns <code>YES</code> if the receiver is of the <code>aClass</code> class type.
+    Returns \c YES if the receiver is of the \c aClass class type.
     @param aClass the class to test the receiper
 */
 - (BOOL)isMemberOfClass:(Class)aClass
@@ -202,7 +202,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 
 /*!
     Determines whether the receiver's root object is a proxy.
-    @return <code>YES</code> if the root object is a proxy
+    @return \c YES if the root object is a proxy
 */
 - (BOOL)isProxy
 {
@@ -213,7 +213,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 /*!
     Test whether instances of this class respond to the provided selector.
     @param aSelector the selector for which to test the class
-    @return <code>YES</code> if instances of the class respond to the selector
+    @return \c YES if instances of the class respond to the selector
 */
 + (BOOL)instancesRespondToSelector:(SEL)aSelector
 {
@@ -223,10 +223,11 @@ CPLog(@"Got some class: %@", inst);</pre>
 /*!
     Tests whether the receiver responds to the provided selector.
     @param aSelector the selector for which to test the receiver
-    @return <code>YES</code> if the receiver responds to the selector
+    @return \c YES if the receiver responds to the selector
 */
 - (BOOL)respondsToSelector:(SEL)aSelector
 {
+    // isa is isa.isa in class case.
     return !!class_getInstanceMethod(isa, aSelector);
 }
 
@@ -269,7 +270,12 @@ CPLog(@"Got some class: %@", inst);</pre>
 */
 - (CPString)description
 {
-    return "<" + isa.name + " 0x" + [CPString stringWithHash:[self UID]] + ">";
+    return "<" + class_getName(isa) + " 0x" + [CPString stringWithHash:[self UID]] + ">";
+}
+
++ (CPString)description
+{
+    return class_getName(isa);
 }
 
 // Sending Messages
@@ -310,7 +316,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 /*!
     Subclasses can override this method to forward message to
     other objects. Overwriting this method in conjunction with
-    <code>methodSignatureForSelector:</code> allows the receiver to
+    \c -methodSignatureForSelector: allows the receiver to
     forward messages for which it does not respond, to another object that does.
 */
 - (void)forwardInvocation:(CPInvocation)anInvocation
@@ -322,6 +328,7 @@ CPLog(@"Got some class: %@", inst);</pre>
     Used for forwarding of messages to other objects.
     @ignore
 */
+// FIXME: This should be moved to the runtime?
 - (void)forward:(SEL)aSelector :(marg_list)args
 {
     var signature = [self methodSignatureForSelector:aSelector];
@@ -376,7 +383,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 
 /*!
     Can be overridden by subclasses to substitute a different class to represent the receiver for keyed archiving.
-    @return the class to use. A <code>nil</code> means to ignore the method result.
+    @return the class to use. A \c nil means to ignore the method result.
 */
 - (Class)classForKeyedArchiver
 {
@@ -468,17 +475,17 @@ CPLog(@"Got some class: %@", inst);</pre>
     return [self UID];
 }
 
-- (unsigned)UID
+- (CPString)UID
 {
-    if (typeof self.__address === "undefined")
-        self.__address = _objj_generateObjectHash();
+    if (typeof self._UID === "undefined")
+        self._UID = objj_generateObjectUID();
 
-    return __address;
+    return _UID + "";
 }
 
 /*!
-    Determines if <code>anObject</code> is functionally equivalent to the receiver.
-    @return <code>YES</code> if <code>anObject</code> is functionally equivalent to the receiver.
+    Determines if \c anObject is functionally equivalent to the receiver.
+    @return \c YES if \c anObject is functionally equivalent to the receiver.
 */
 - (BOOL)isEqual:(id)anObject
 {
@@ -521,7 +528,7 @@ CPLog(@"Got some class: %@", inst);</pre>
 
 // override toString on Objective-J objects so we get the actual description of the object
 // when coerced to a string, instead of "[Object object]"
-objj_object.prototype.toString = function()
+objj_class.prototype.toString = objj_object.prototype.toString = function()
 {
     if (this.isa && class_getInstanceMethod(this.isa, "description") != NULL)
         return [this description]

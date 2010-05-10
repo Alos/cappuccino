@@ -27,6 +27,9 @@ CPDeleteKeyCode     = 8;
 CPTabKeyCode        = 9;
 CPReturnKeyCode     = 13;
 CPEscapeKeyCode     = 27;
+CPSpaceKeyCode      = 32;
+CPPageUpKeyCode     = 33;
+CPPageDownKeyCode   = 34;
 CPLeftArrowKeyCode  = 37;
 CPUpArrowKeyCode    = 38;
 CPRightArrowKeyCode = 39;
@@ -46,7 +49,7 @@ CPDownArrowKeyCode  = 40;
 
 // Changing the first responder
 /*!
-    Returns <code>YES</code> if the receiver is able to become the first responder. <code>NO</code> otherwise.
+    Returns \c YES if the receiver is able to become the first responder. \c NO otherwise.
 */
 - (BOOL)acceptsFirstResponder
 {
@@ -55,8 +58,8 @@ CPDownArrowKeyCode  = 40;
 
 /*!
     Notifies the receiver that it will become the first responder. The receiver can reject first
-    responder if it returns <code>NO</code>. The default implementation always returns <code>YES</code>.
-    @return <code>YES</code> if the receiver accepts first responder status.
+    responder if it returns \c NO. The default implementation always returns \c YES.
+    @return \c YES if the receiver accepts first responder status.
 */
 - (BOOL)becomeFirstResponder
 {
@@ -65,7 +68,7 @@ CPDownArrowKeyCode  = 40;
 
 /*!
     Notifies the receiver that it has been asked to give up first responder status.
-    @return <code>YES</code> if the receiver is willing to give up first responder status.
+    @return \c YES if the receiver is willing to give up first responder status.
 */
 - (BOOL)resignFirstResponder
 {
@@ -105,6 +108,10 @@ CPDownArrowKeyCode  = 40;
 
         switch([event keyCode])
         {
+            case CPPageUpKeyCode:       [self doCommandBySelector:@selector(pageUp:)];
+                                        break;
+            case CPPageDownKeyCode:     [self doCommandBySelector:@selector(pageDown:)];
+                                        break;
             case CPLeftArrowKeyCode:    [self doCommandBySelector:@selector(moveLeft:)];
                                         break;
             case CPRightArrowKeyCode:   [self doCommandBySelector:@selector(moveRight:)];
@@ -146,6 +153,15 @@ CPDownArrowKeyCode  = 40;
 }
 
 /*!
+    Notifies the receiver that the user has clicked the right mouse down in its area.
+    @param anEvent contains information about the right click
+*/
+- (void)rightMouseDown:(CPEvent)anEvent
+{
+    [_nextResponder performSelector:_cmd withObject:anEvent];
+}
+
+/*!
     Notifies the receiver that the user has initiated a drag
     over it. A drag is a mouse movement while the left button is down.
     @param anEvent contains information about the drag
@@ -160,6 +176,15 @@ CPDownArrowKeyCode  = 40;
     @param anEvent contains information about the release
 */
 - (void)mouseUp:(CPEvent)anEvent
+{
+    [_nextResponder performSelector:_cmd withObject:anEvent];
+}
+
+/*!
+    Notifies the receiver that the user has released the right mouse button.
+    @param anEvent contains information about the release
+*/
+- (void)rightMouseUp:(CPEvent)anEvent
 {
     [_nextResponder performSelector:_cmd withObject:anEvent];
 }
@@ -216,9 +241,9 @@ CPDownArrowKeyCode  = 40;
 
 /*
     FIXME This description is bad.
-    Based on <code>anEvent</code>, the receiver should simulate the event.
+    Based on \c anEvent, the receiver should simulate the event.
     @param anEvent the event to simulate
-    @return <code>YES</code> if the event receiver simulated the  event
+    @return \c YES if the event receiver simulated the  event
 */
 - (BOOL)performKeyEquivalent:(CPEvent)anEvent
 {
@@ -241,7 +266,7 @@ CPDownArrowKeyCode  = 40;
 */
 - (void)insertNewline:(id)aSender
 {
-    [self insertNewline:aSender];
+    [[self nextResponder] insertNewline:aSender];
 }
 
 - (void)cancel:(id)sender
@@ -267,7 +292,7 @@ CPDownArrowKeyCode  = 40;
 // Dispatch methods
 /*!
     The receiver will attempt to perform the command,
-    if it responds to it. If not, the <code>nextResponder</code> will be called to do it.
+    if it responds to it. If not, the \c -nextResponder will be called to do it.
     @param aSelector the command to attempt
 */
 - (void)doCommandBySelector:(SEL)aSelector
@@ -282,7 +307,7 @@ CPDownArrowKeyCode  = 40;
     The receiver will attempt to perform the command, or pass it on to the next responder if it doesn't respond to it.
     @param aSelector the command to perform
     @param anObject the argument to the method
-    @return <code>YES</code> if the receiver was able to perform the command, or a responder down the chain was
+    @return \c YES if the receiver was able to perform the command, or a responder down the chain was
     able to perform the command.
 */
 - (BOOL)tryToPerform:(SEL)aSelector with:(id)anObject
