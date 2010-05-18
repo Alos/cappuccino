@@ -969,7 +969,7 @@
     [slider setValue:knobColor forThemeAttribute:@"knob-color"];
     [slider setValue:knobHighlightedColor forThemeAttribute:@"knob-color" inState:CPThemeStateHighlighted];
     [slider setValue:knobDisabledColor forThemeAttribute:@"knob-color" inState:CPThemeStateDisabled];
-    
+    //[slider setBackgroundColor: [CPColor redColor]];
     return slider;
 }
 
